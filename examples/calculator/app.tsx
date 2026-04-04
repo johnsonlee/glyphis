@@ -98,41 +98,61 @@ function Calculator() {
   const [clearLabel, setClearLabel] = useState('AC');
   const [expression, setExpression] = useState('');
 
+  // Refs that always point to the latest state — avoids stale closures on iOS
+  // where queueMicrotask is polyfilled as a macrotask.
+  const displayRef = React.useRef(display);
+  displayRef.current = display;
+
+  const previousValueRef = React.useRef(previousValue);
+  previousValueRef.current = previousValue;
+
+  const operationRef = React.useRef(operation);
+  operationRef.current = operation;
+
+  const waitingForOperandRef = React.useRef(waitingForOperand);
+  waitingForOperandRef.current = waitingForOperand;
+
+  const expressionRef = React.useRef(expression);
+  expressionRef.current = expression;
+
+  const activeOperatorRef = React.useRef(activeOperator);
+  activeOperatorRef.current = activeOperator;
+
   // Determine if display shows "AC" or "C"
   const currentClearLabel = useMemo(() => {
     return display === '0' && previousValue === null && operation === null ? 'AC' : 'C';
   }, [display, previousValue, operation]);
 
   const handleDigit = useCallback((digit: string) => {
-    if (expression.endsWith('=')) {
+    if (expressionRef.current.endsWith('=')) {
       setExpression('');
     }
-    if (waitingForOperand) {
+    if (waitingForOperandRef.current) {
       setDisplay(digit);
       setWaitingForOperand(false);
       setActiveOperator(null);
     } else {
       // Limit display length (9 digits max, not counting minus or decimal)
-      const rawLen = display.replace(/[.\-]/g, '').length;
+      const rawLen = displayRef.current.replace(/[.\-]/g, '').length;
       if (rawLen >= 9 && digit !== '.') return;
-      setDisplay(display === '0' ? digit : display + digit);
+      setDisplay(displayRef.current === '0' ? digit : displayRef.current + digit);
     }
     setClearLabel('C');
-  }, [display, waitingForOperand, expression]);
+  }, []);
 
   const handleDecimal = useCallback(() => {
-    if (expression.endsWith('=')) {
+    if (expressionRef.current.endsWith('=')) {
       setExpression('');
     }
-    if (waitingForOperand) {
+    if (waitingForOperandRef.current) {
       setDisplay('0.');
       setWaitingForOperand(false);
       setActiveOperator(null);
-    } else if (!display.includes('.')) {
-      setDisplay(display + '.');
+    } else if (!displayRef.current.includes('.')) {
+      setDisplay(displayRef.current + '.');
     }
     setClearLabel('C');
-  }, [display, waitingForOperand, expression]);
+  }, []);
 
   const performOperation = useCallback((prev: number, op: string, current: number): number => {
     switch (op) {
@@ -147,23 +167,23 @@ function Calculator() {
   const opSymbolMap: Record<string, string> = { '+': '+', '-': '\u2212', '*': '\u00D7', '/': '\u00F7' };
 
   const handleOperator = useCallback((op: string) => {
-    const currentValue = parseFloat(display);
+    const currentValue = parseFloat(displayRef.current);
     const opSymbol = opSymbolMap[op] || op;
 
-    if (expression.endsWith('=')) {
+    if (expressionRef.current.endsWith('=')) {
       // Starting a new chain from a previous result
-      setExpression(formatDisplay(display) + ' ' + opSymbol + ' ');
-    } else if (waitingForOperand && operation) {
+      setExpression(formatDisplay(displayRef.current) + ' ' + opSymbol + ' ');
+    } else if (waitingForOperandRef.current && operationRef.current) {
       // Changing operator without entering a new number: replace the last operator
       setExpression(prev => prev.replace(/\S+\s*$/, opSymbol + ' '));
     } else {
       // Append current value and operator
-      setExpression(prev => prev + formatDisplay(display) + ' ' + opSymbol + ' ');
+      setExpression(prev => prev + formatDisplay(displayRef.current) + ' ' + opSymbol + ' ');
     }
 
-    if (previousValue !== null && operation && !waitingForOperand) {
+    if (previousValueRef.current !== null && operationRef.current && !waitingForOperandRef.current) {
       // Chained operation: compute previous result first
-      const result = performOperation(previousValue, operation, currentValue);
+      const result = performOperation(previousValueRef.current, operationRef.current, currentValue);
       if (isNaN(result) || !isFinite(result)) {
         setDisplay('Error');
         setPreviousValue(null);
@@ -183,14 +203,14 @@ function Calculator() {
     setOperation(op);
     setWaitingForOperand(true);
     setActiveOperator(op);
-  }, [display, previousValue, operation, waitingForOperand, performOperation, expression]);
+  }, [performOperation]);
 
   const handleEquals = useCallback(() => {
-    const currentValue = parseFloat(display);
+    const currentValue = parseFloat(displayRef.current);
 
-    if (previousValue !== null && operation) {
-      const result = performOperation(previousValue, operation, currentValue);
-      setExpression(prev => prev + formatDisplay(display) + ' =');
+    if (previousValueRef.current !== null && operationRef.current) {
+      const result = performOperation(previousValueRef.current, operationRef.current, currentValue);
+      setExpression(prev => prev + formatDisplay(displayRef.current) + ' =');
       if (isNaN(result) || !isFinite(result)) {
         setDisplay('Error');
       } else {
@@ -202,10 +222,12 @@ function Calculator() {
 
     setWaitingForOperand(true);
     setActiveOperator(null);
-  }, [display, previousValue, operation, performOperation, expression]);
+  }, [performOperation]);
 
   const handleClear = useCallback(() => {
-    if (currentClearLabel === 'AC' || display === 'Error') {
+    const d = displayRef.current;
+    const isAC = d === '0' && previousValueRef.current === null && operationRef.current === null;
+    if (isAC || d === 'Error') {
       // Full clear
       setDisplay('0');
       setPreviousValue(null);
@@ -218,24 +240,25 @@ function Calculator() {
       setDisplay('0');
     }
     setClearLabel('AC');
-  }, [currentClearLabel, display]);
+  }, []);
 
   const handleToggleSign = useCallback(() => {
-    if (display === '0' || display === 'Error') return;
-    if (display.startsWith('-')) {
-      setDisplay(display.slice(1));
+    const d = displayRef.current;
+    if (d === '0' || d === 'Error') return;
+    if (d.startsWith('-')) {
+      setDisplay(d.slice(1));
     } else {
-      setDisplay('-' + display);
+      setDisplay('-' + d);
     }
-  }, [display]);
+  }, []);
 
   const handlePercent = useCallback(() => {
-    const value = parseFloat(display);
+    const value = parseFloat(displayRef.current);
     if (isNaN(value)) return;
     const result = value / 100;
     setDisplay(formatResult(result));
     setWaitingForOperand(false);
-  }, [display]);
+  }, []);
 
   // Format a numeric result to fit the display
   function formatResult(value: number): string {
