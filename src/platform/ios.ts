@@ -14,15 +14,10 @@ declare const __glyph_native: {
 
 import type { Renderer, AnyRenderCommand } from '../types';
 import { createLayoutEngine } from '../layout/index';
-import type { LayoutOutput } from '../layout';
 import { GlyphNode, HOST_TYPES } from '../react/glyph-node';
 import { nodeToLayoutInput, buildNodeLayoutMap } from '../react/node-to-layout';
 import { generateNodeRenderCommands } from '../react/render-commands';
-import {
-  hitTestNode,
-  createNodePointerEvent,
-  dispatchNodeEvent,
-} from '../react/event-handler';
+import { NodeEventManager } from '../react/event-handler';
 import { renderReact } from '../react/renderer';
 import type { ReactElement } from 'react';
 
@@ -79,6 +74,7 @@ export function render(element: ReactElement): void {
     style: { width: renderer.getWidth(), height: renderer.getHeight() },
   });
 
+  const eventManager = new NodeEventManager();
   let needsRender = false;
 
   function scheduleRender() {
@@ -102,9 +98,7 @@ export function render(element: ReactElement): void {
 
     renderer.render(commands);
 
-    // Store for touch handling
-    (globalThis as any).__glyph_rootNode = rootNode;
-    (globalThis as any).__glyph_layoutMap = layoutMap;
+    eventManager.setRoot(rootNode, layoutMap);
   }
 
   // Touch handler invoked by the native shell
@@ -113,19 +107,17 @@ export function render(element: ReactElement): void {
     x: number,
     y: number,
   ) => {
-    const currentRoot = (globalThis as any).__glyph_rootNode as
-      | GlyphNode
-      | undefined;
-    const currentLayoutMap = (globalThis as any).__glyph_layoutMap as
-      | Map<GlyphNode, LayoutOutput>
-      | undefined;
-    if (!currentRoot || !currentLayoutMap) return;
-
-    const target = hitTestNode(currentRoot, currentLayoutMap, x, y);
-    if (!target) return;
-
-    const event = createNodePointerEvent(type as any, x, y, target.node);
-    dispatchNodeEvent(event as any);
+    switch (type) {
+      case 'pressIn':
+        eventManager.handlePointerDown(x, y);
+        break;
+      case 'pressOut':
+        // pressOut is handled inside handlePointerUp
+        break;
+      case 'press':
+        eventManager.handlePointerUp(x, y);
+        break;
+    }
   };
 
   // Viewport resize handler invoked by the native shell
