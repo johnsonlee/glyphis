@@ -147,6 +147,25 @@ class GlyphRuntime {
         }
         context.setObject(queueMicrotask, forKeyedSubscript: "queueMicrotask" as NSString)
 
+        // MessageChannel polyfill — required by React's scheduler
+        context.evaluateScript("""
+        if (typeof MessageChannel === 'undefined') {
+            function MessageChannel() {
+                this.port1 = { onmessage: null };
+                var port1 = this.port1;
+                this.port2 = {
+                    postMessage: function(msg) {
+                        if (port1.onmessage) {
+                            var handler = port1.onmessage;
+                            queueMicrotask(function() { handler({ data: msg }); });
+                        }
+                    }
+                };
+            }
+            this.MessageChannel = MessageChannel;
+        }
+        """)
+
         // performance.now
         let perfObj = JSValue(newObjectIn: context)!
         let startTime = Date().timeIntervalSince1970
