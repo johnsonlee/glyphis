@@ -6,6 +6,35 @@ export interface EventTarget {
   layout: LayoutBox;
 }
 
+export function isInsideRoundedRect(
+  px: number, py: number,
+  rx: number, ry: number,
+  rw: number, rh: number,
+  radius: number,
+): boolean {
+  const r = Math.min(radius, rw / 2, rh / 2);
+  if (r <= 0) return true;
+
+  // Top-left corner
+  if (px < rx + r && py < ry + r) {
+    return (px - rx - r) ** 2 + (py - ry - r) ** 2 <= r * r;
+  }
+  // Top-right corner
+  if (px > rx + rw - r && py < ry + r) {
+    return (px - rx - rw + r) ** 2 + (py - ry - r) ** 2 <= r * r;
+  }
+  // Bottom-left corner
+  if (px < rx + r && py > ry + rh - r) {
+    return (px - rx - r) ** 2 + (py - ry - rh + r) ** 2 <= r * r;
+  }
+  // Bottom-right corner
+  if (px > rx + rw - r && py > ry + rh - r) {
+    return (px - rx - rw + r) ** 2 + (py - ry - rh + r) ** 2 <= r * r;
+  }
+
+  return true;
+}
+
 export function hitTest(
   fiber: Fiber,
   layoutMap: Map<Fiber, LayoutOutput>,
@@ -58,8 +87,14 @@ export function hitTest(
     if (result) return result;
   }
 
-  // Return this node if the point is within bounds and it is a host fiber
-  if (isInBounds && fiber.tag === 'host') {
+  // Also check borderRadius if present
+  const borderRadius = style.borderRadius ?? 0;
+  const isInShape = isInBounds && (borderRadius <= 0 || isInsideRoundedRect(
+    x, y, nodeX, nodeY, layout.width, layout.height, borderRadius
+  ));
+
+  // Return this node if the point is within the rounded shape and it is a host fiber
+  if (isInShape && fiber.tag === 'host') {
     return {
       fiber,
       layout: { x: nodeX, y: nodeY, width: layout.width, height: layout.height },

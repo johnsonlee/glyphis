@@ -188,7 +188,7 @@ describe('CanvasRenderer', () => {
       renderer.render(commands);
       expect(ctx.font).toBe('bold 16px Arial');
       expect(ctx.fillStyle).toBe('#000');
-      expect(ctx.textBaseline).toBe('top');
+      expect(ctx.textBaseline).toBe('middle');
       expect(ctx.fillText).toHaveBeenCalled();
     });
 
@@ -266,8 +266,8 @@ describe('CanvasRenderer', () => {
       renderer.render(commands);
       const fillTextCalls = ctx.calls.filter((c: MockCall) => c.method === 'fillText');
       expect(fillTextCalls.length).toBe(2);
-      expect(fillTextCalls[0].args[2]).toBe(0);   // y of first line
-      expect(fillTextCalls[1].args[2]).toBe(24);   // y of second line = 0 + lineHeight
+      expect(fillTextCalls[0].args[2]).toBe(12);   // y of first line = 0 + lineHeight / 2
+      expect(fillTextCalls[1].args[2]).toBe(36);   // y of second line = 0 + lineHeight + lineHeight / 2
     });
   });
 

@@ -107,7 +107,7 @@ export class CanvasRenderer implements Renderer {
     this.ctx.fillStyle = cmd.color;
     this.ctx.font = `${cmd.fontWeight} ${cmd.fontSize}px ${cmd.fontFamily}`;
     this.ctx.textAlign = cmd.textAlign as CanvasTextAlign;
-    this.ctx.textBaseline = 'top';
+    this.ctx.textBaseline = 'middle';
 
     const lineHeight = cmd.lineHeight ?? cmd.fontSize * 1.2;
     const words = cmd.text.split(' ');
@@ -136,7 +136,7 @@ export class CanvasRenderer implements Renderer {
     }
 
     for (let i = 0; i < lines.length; i++) {
-      this.ctx.fillText(lines[i], textX, cmd.y + i * lineHeight);
+      this.ctx.fillText(lines[i], textX, cmd.y + i * lineHeight + lineHeight / 2);
     }
   }
 

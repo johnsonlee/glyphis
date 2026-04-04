@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { hitTest, createPointerEvent, dispatchEvent, EventManager } from '../src/events';
+import { hitTest, isInsideRoundedRect, createPointerEvent, dispatchEvent, EventManager } from '../src/events';
 import type { Fiber } from '../src/types';
 import type { LayoutOutput } from '../src/layout';
 
@@ -165,6 +165,52 @@ describe('hitTest', () => {
     expect(hitTest(fiber, layoutMap, 101, 50)).toBeNull();
     expect(hitTest(fiber, layoutMap, 50, -1)).toBeNull();
     expect(hitTest(fiber, layoutMap, 50, 101)).toBeNull();
+  });
+});
+
+describe('isInsideRoundedRect', () => {
+  it('returns true for a point in the center of a circle', () => {
+    // 100x100 rect with borderRadius 50 = circle centered at (50,50)
+    expect(isInsideRoundedRect(50, 50, 0, 0, 100, 100, 50)).toBe(true);
+  });
+
+  it('returns false for a point at the corner outside the circle', () => {
+    // Point (1, 1) is in the top-left corner region, outside the arc
+    expect(isInsideRoundedRect(1, 1, 0, 0, 100, 100, 50)).toBe(false);
+  });
+
+  it('returns true for a point on the edge of the arc', () => {
+    // Circle centered at (50, 50) with radius 50; point on the edge at 45 degrees
+    const edgeX = 50 - 50 * Math.cos(Math.PI / 4); // ~14.64
+    const edgeY = 50 - 50 * Math.sin(Math.PI / 4); // ~14.64
+    expect(isInsideRoundedRect(edgeX, edgeY, 0, 0, 100, 100, 50)).toBe(true);
+  });
+});
+
+describe('hitTest with borderRadius', () => {
+  it('returns fiber for a click inside the rounded shape', () => {
+    const fiber = createFiber({
+      props: { style: { borderRadius: 50 } },
+    });
+    const layoutMap = new Map<Fiber, LayoutOutput>();
+    layoutMap.set(fiber, createLayout(0, 0, 100, 100));
+
+    // Center of the circle
+    const result = hitTest(fiber, layoutMap, 50, 50);
+    expect(result).not.toBeNull();
+    expect(result!.fiber).toBe(fiber);
+  });
+
+  it('returns null for a click at the corner outside the rounded shape', () => {
+    const fiber = createFiber({
+      props: { style: { borderRadius: 50 } },
+    });
+    const layoutMap = new Map<Fiber, LayoutOutput>();
+    layoutMap.set(fiber, createLayout(0, 0, 100, 100));
+
+    // Top-left corner, inside rect but outside circle
+    const result = hitTest(fiber, layoutMap, 1, 1);
+    expect(result).toBeNull();
   });
 });
 
