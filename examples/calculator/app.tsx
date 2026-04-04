@@ -1,10 +1,8 @@
-import { useState, useCallback, useMemo } from '../../src/hooks';
-import { Box } from '../../src/components/Box';
-import { Text } from '../../src/components/Text';
-import { createElement } from '../../src/jsx';
-import { render } from '../../src/platform/web';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text } from '../../src/react/components';
+import { render } from '../../src/react/platform-web';
 
-// ── Number formatting ──────────────────────────────────────────────────
+// -- Number formatting ----------------------------------------------------------
 
 function formatDisplay(value: string): string {
   // Handle special values
@@ -44,7 +42,7 @@ function displayFontSize(text: string): number {
   return 44;
 }
 
-// ── CalcButton component ───────────────────────────────────────────────
+// -- CalcButton component -------------------------------------------------------
 
 interface CalcButtonProps {
   label: string;
@@ -62,7 +60,7 @@ function CalcButton(props: CalcButtonProps) {
   const btnWidth = wide ? 170 : 80;
   const fontSize = label === '+/-' ? 24 : (label.length === 1 ? 32 : 24);
 
-  return createElement(Box, {
+  return React.createElement(View, {
     onPressIn: () => setPressed(true),
     onPressOut: () => setPressed(false),
     onPress: onPress,
@@ -77,7 +75,7 @@ function CalcButton(props: CalcButtonProps) {
       opacity: pressed ? 0.6 : 1,
     },
   },
-    createElement(Text, {
+    React.createElement(Text, {
       style: {
         color: textColor,
         fontSize: fontSize,
@@ -89,7 +87,7 @@ function CalcButton(props: CalcButtonProps) {
   );
 }
 
-// ── Calculator component ───────────────────────────────────────────────
+// -- Calculator component -------------------------------------------------------
 
 function Calculator() {
   const [display, setDisplay] = useState('0');
@@ -290,7 +288,7 @@ function Calculator() {
   const NUM_BG = '#333333';
   const NUM_FG = '#FFFFFF';
 
-  return createElement(Box, {
+  return React.createElement(View, {
     style: {
       flex: 1,
       backgroundColor: '#000000',
@@ -300,7 +298,7 @@ function Calculator() {
     },
   },
     // Display area
-    createElement(Box, {
+    React.createElement(View, {
       style: {
         paddingRight: 24,
         paddingBottom: 16,
@@ -310,7 +308,7 @@ function Calculator() {
       },
     },
       // Expression line (smaller, gray)
-      createElement(Text, {
+      React.createElement(Text, {
         style: {
           color: '#8E8E93',
           fontSize: 24,
@@ -321,7 +319,7 @@ function Calculator() {
         },
       }, expression || ' '),
       // Current value (large, white)
-      createElement(Text, {
+      React.createElement(Text, {
         style: {
           color: '#FFFFFF',
           fontSize: fontSize,
@@ -333,17 +331,17 @@ function Calculator() {
     ),
 
     // Row 1: AC, +/-, %, div
-    createElement(Box, {
+    React.createElement(View, {
       style: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 12,
       },
     },
-      createElement(CalcButton, { label: currentClearLabel, onPress: handleClear, bgColor: FUNC_BG, textColor: FUNC_FG }),
-      createElement(CalcButton, { label: '+/-', onPress: handleToggleSign, bgColor: FUNC_BG, textColor: FUNC_FG }),
-      createElement(CalcButton, { label: '%', onPress: handlePercent, bgColor: FUNC_BG, textColor: FUNC_FG }),
-      createElement(CalcButton, {
+      React.createElement(CalcButton, { label: currentClearLabel, onPress: handleClear, bgColor: FUNC_BG, textColor: FUNC_FG }),
+      React.createElement(CalcButton, { label: '+/-', onPress: handleToggleSign, bgColor: FUNC_BG, textColor: FUNC_FG }),
+      React.createElement(CalcButton, { label: '%', onPress: handlePercent, bgColor: FUNC_BG, textColor: FUNC_FG }),
+      React.createElement(CalcButton, {
         label: '\u00F7',
         onPress: () => handleOperator('/'),
         bgColor: opBg('/'),
@@ -352,17 +350,17 @@ function Calculator() {
     ),
 
     // Row 2: 7, 8, 9, mul
-    createElement(Box, {
+    React.createElement(View, {
       style: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 12,
       },
     },
-      createElement(CalcButton, { label: '7', onPress: () => handleDigit('7'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '8', onPress: () => handleDigit('8'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '9', onPress: () => handleDigit('9'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, {
+      React.createElement(CalcButton, { label: '7', onPress: () => handleDigit('7'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '8', onPress: () => handleDigit('8'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '9', onPress: () => handleDigit('9'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, {
         label: '\u00D7',
         onPress: () => handleOperator('*'),
         bgColor: opBg('*'),
@@ -371,17 +369,17 @@ function Calculator() {
     ),
 
     // Row 3: 4, 5, 6, sub
-    createElement(Box, {
+    React.createElement(View, {
       style: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 12,
       },
     },
-      createElement(CalcButton, { label: '4', onPress: () => handleDigit('4'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '5', onPress: () => handleDigit('5'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '6', onPress: () => handleDigit('6'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, {
+      React.createElement(CalcButton, { label: '4', onPress: () => handleDigit('4'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '5', onPress: () => handleDigit('5'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '6', onPress: () => handleDigit('6'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, {
         label: '\u2212',
         onPress: () => handleOperator('-'),
         bgColor: opBg('-'),
@@ -390,17 +388,17 @@ function Calculator() {
     ),
 
     // Row 4: 1, 2, 3, add
-    createElement(Box, {
+    React.createElement(View, {
       style: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 12,
       },
     },
-      createElement(CalcButton, { label: '1', onPress: () => handleDigit('1'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '2', onPress: () => handleDigit('2'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '3', onPress: () => handleDigit('3'), bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, {
+      React.createElement(CalcButton, { label: '1', onPress: () => handleDigit('1'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '2', onPress: () => handleDigit('2'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '3', onPress: () => handleDigit('3'), bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, {
         label: '+',
         onPress: () => handleOperator('+'),
         bgColor: opBg('+'),
@@ -409,29 +407,29 @@ function Calculator() {
     ),
 
     // Row 5: 0 (wide), ., =
-    createElement(Box, {
+    React.createElement(View, {
       style: {
         flexDirection: 'row',
         justifyContent: 'space-between',
       },
     },
-      createElement(CalcButton, { label: '0', onPress: () => handleDigit('0'), bgColor: NUM_BG, textColor: NUM_FG, wide: true }),
-      createElement(CalcButton, { label: '.', onPress: handleDecimal, bgColor: NUM_BG, textColor: NUM_FG }),
-      createElement(CalcButton, { label: '=', onPress: handleEquals, bgColor: '#FF9500', textColor: '#FFFFFF' }),
+      React.createElement(CalcButton, { label: '0', onPress: () => handleDigit('0'), bgColor: NUM_BG, textColor: NUM_FG, wide: true }),
+      React.createElement(CalcButton, { label: '.', onPress: handleDecimal, bgColor: NUM_BG, textColor: NUM_FG }),
+      React.createElement(CalcButton, { label: '=', onPress: handleEquals, bgColor: '#FF9500', textColor: '#FFFFFF' }),
     ),
   );
 }
 
-// ── App bootstrap ──────────────────────────────────────────────────────
+// -- App bootstrap --------------------------------------------------------------
 
 function App() {
-  return createElement(Box, {
+  return React.createElement(View, {
     style: {
       flex: 1,
       backgroundColor: '#000000',
     },
   },
-    createElement(Calculator, {}),
+    React.createElement(Calculator, {}),
   );
 }
 
@@ -442,5 +440,5 @@ if (canvas) {
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * dpr;
   canvas.height = rect.height * dpr;
-  render(createElement(App, {}), canvas);
+  render(React.createElement(App, {}), canvas);
 }
