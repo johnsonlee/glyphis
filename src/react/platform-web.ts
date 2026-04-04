@@ -5,7 +5,7 @@ import { nodeToLayoutInput, buildNodeLayoutMap } from './node-to-layout';
 import { generateNodeRenderCommands } from './render-commands';
 import { NodeEventManager } from './event-handler';
 import { CanvasRenderer } from '../canvas-renderer';
-import { computeLayout } from '../layout';
+import { createLayoutEngine } from '../layout/index';
 import { setDebugMode } from '../render-tree';
 
 export function render(element: ReactElement, canvas: HTMLCanvasElement): void {
@@ -29,7 +29,8 @@ export function render(element: ReactElement, canvas: HTMLCanvasElement): void {
     needsRender = false;
 
     const layoutInput = nodeToLayoutInput(rootNode, renderer);
-    const layoutOutput = computeLayout(layoutInput, renderer.getWidth(), renderer.getHeight());
+    const layoutEngine = createLayoutEngine();
+    const layoutOutput = layoutEngine.computeLayout(layoutInput, renderer.getWidth(), renderer.getHeight());
     const layoutMap = buildNodeLayoutMap(rootNode, layoutOutput);
     const commands = generateNodeRenderCommands(rootNode, layoutMap);
 
