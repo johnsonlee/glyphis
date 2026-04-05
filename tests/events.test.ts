@@ -23,6 +23,15 @@ function layout(root: GlyphisNode): void {
   root.yoga.calculateLayout(undefined, undefined);
 }
 
+/** Reset global event state by running a full press cycle on a throwaway node */
+function resetEventState(): void {
+  const dummy = makeNode('View', { width: 1, height: 1 });
+  dummy.handlers = { onPress: () => {} };
+  layout(dummy);
+  dispatchInput(dummy, { type: 'pointerdown', x: 0, y: 0 });
+  dispatchInput(dummy, { type: 'pointerup', x: 0, y: 0 });
+}
+
 describe('hitTest', () => {
   it('returns null for coordinates outside root', () => {
     const root = makeNode('View', { width: 100, height: 100 });
@@ -121,9 +130,22 @@ describe('hitTest', () => {
 
     expect(hitTest(root, 50, 50)).toBe(root);
   });
+
+  it('returns null for node with only onPointerMove (not a press handler)', () => {
+    const root = makeNode('View', { width: 100, height: 100 });
+    root.handlers = { onPointerMove: () => {} };
+    layout(root);
+
+    // hitTest only considers press handlers, not scroll handlers
+    expect(hitTest(root, 50, 50)).toBeNull();
+  });
 });
 
 describe('dispatchInput', () => {
+  beforeEach(() => {
+    resetEventState();
+  });
+
   it('pointerdown calls onPressIn', () => {
     const onPressIn = mock(() => {});
     const root = makeNode('View', { width: 100, height: 100 });
@@ -204,7 +226,6 @@ describe('dispatchInput', () => {
   });
 
   it('pointerdown outside any handler node does not set pressedNode', () => {
-    const onPressOut = mock(() => {});
     const root = makeNode('View', { width: 100, height: 100 });
     // No handlers on root
     layout(root);
@@ -221,16 +242,240 @@ describe('dispatchInput', () => {
     root.handlers = { onPress };
     layout(root);
 
-    // Need to clear any global pressedNode state from prior tests by
-    // simulating a complete cycle on a dummy node first
-    const dummy = makeNode('View', { width: 10, height: 10 });
-    dummy.handlers = { onPress: () => {} };
-    layout(dummy);
-    dispatchInput(dummy, { type: 'pointerdown', x: 5, y: 5 });
-    dispatchInput(dummy, { type: 'pointerup', x: 5, y: 5 });
-
     // Now pointerup without a pointerdown on root
     dispatchInput(root, { type: 'pointerup', x: 50, y: 50 });
     expect(onPress).not.toHaveBeenCalled();
+  });
+});
+
+describe('dispatchInput - scroll/drag', () => {
+  beforeEach(() => {
+    resetEventState();
+  });
+
+  /**
+   * Build a tree: scrollParent (300x300, onPointerMove) > pressChild (100x100, onPress/onPressIn/onPressOut)
+   */
+  function buildScrollTree() {
+    const onPointerMove = mock((_x: number, _y: number) => {});
+    const onScrollDragStart = mock((_x: number, _y: number) => {});
+    const onScrollDragEnd = mock((_x: number, _y: number) => {});
+    const onPress = mock(() => {});
+    const onPressIn = mock(() => {});
+    const onPressOut = mock(() => {});
+
+    const root = makeNode('View', { width: 400, height: 400 });
+
+    const scrollParent = makeNode('View', { width: 300, height: 300 });
+    scrollParent.handlers = {
+      onPointerMove,
+      onScrollDragStart,
+      onScrollDragEnd,
+    };
+    appendChild(root, scrollParent);
+
+    const pressChild = makeNode('View', { width: 100, height: 100 });
+    pressChild.handlers = { onPress, onPressIn, onPressOut };
+    appendChild(scrollParent, pressChild);
+
+    layout(root);
+
+    return {
+      root,
+      scrollParent,
+      pressChild,
+      onPointerMove,
+      onScrollDragStart,
+      onScrollDragEnd,
+      onPress,
+      onPressIn,
+      onPressOut,
+    };
+  }
+
+  it('hitTestAny returns deepest node regardless of handlers (tested via scroll on non-pressable area)', () => {
+    // When tapping an area with no press handlers but inside a scrollable parent,
+    // the event system should still find the scrollable ancestor via hitTestAny.
+    const onPointerMove = mock((_x: number, _y: number) => {});
+    const onScrollDragStart = mock((_x: number, _y: number) => {});
+
+    const root = makeNode('View', { width: 400, height: 400 });
+
+    const scrollContainer = makeNode('View', { width: 300, height: 300 });
+    scrollContainer.handlers = {
+      onPointerMove,
+      onScrollDragStart,
+    };
+    appendChild(root, scrollContainer);
+
+    // A child with NO press handlers
+    const plainChild = makeNode('View', { width: 100, height: 100 });
+    appendChild(scrollContainer, plainChild);
+
+    layout(root);
+
+    // Tap inside plainChild area - hitTest returns null (no press handlers),
+    // so hitTestAny is used internally to find scrollable ancestor
+    dispatchInput(root, { type: 'pointerdown', x: 50, y: 50 });
+    expect(onScrollDragStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('findScrollableAncestor walks up to find node with onPointerMove', () => {
+    const t = buildScrollTree();
+
+    // Press on the child, which has press handlers but not scroll handlers.
+    // findScrollableAncestor should walk up to scrollParent.
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+    expect(t.onScrollDragStart).toHaveBeenCalledTimes(1);
+
+    // Now move - the scroll parent should receive onPointerMove
+    dispatchInput(t.root, { type: 'pointermove', x: 50, y: 60 });
+    expect(t.onPointerMove).toHaveBeenCalledTimes(1);
+  });
+
+  it('pointermove dispatches to scroll node onPointerMove', () => {
+    const t = buildScrollTree();
+
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+    dispatchInput(t.root, { type: 'pointermove', x: 52, y: 53 });
+
+    expect(t.onPointerMove).toHaveBeenCalledTimes(1);
+    expect(t.onPointerMove).toHaveBeenCalledWith(52, 53);
+  });
+
+  it('pointermove cancels press after 5px drag threshold', () => {
+    const t = buildScrollTree();
+
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+    expect(t.onPressIn).toHaveBeenCalledTimes(1);
+
+    // Move less than threshold - press should NOT be cancelled
+    dispatchInput(t.root, { type: 'pointermove', x: 50, y: 54 });
+    expect(t.onPressOut).not.toHaveBeenCalled();
+
+    // Move beyond threshold (dy > 5)
+    dispatchInput(t.root, { type: 'pointermove', x: 50, y: 56 });
+    expect(t.onPressOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('pointermove fires onPressOut when drag threshold exceeded', () => {
+    const t = buildScrollTree();
+
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+
+    // Move beyond threshold in x direction
+    dispatchInput(t.root, { type: 'pointermove', x: 56, y: 50 });
+
+    expect(t.onPressOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('pointerup does NOT fire onPress when drag was active', () => {
+    const t = buildScrollTree();
+
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+    // Drag beyond threshold
+    dispatchInput(t.root, { type: 'pointermove', x: 50, y: 60 });
+    // Release
+    dispatchInput(t.root, { type: 'pointerup', x: 50, y: 60 });
+
+    expect(t.onPress).not.toHaveBeenCalled();
+    // onPressOut should have been called once during the drag, not again on up
+    expect(t.onPressOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('onScrollDragStart called on pointerdown for scrollable ancestor', () => {
+    const t = buildScrollTree();
+
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+    expect(t.onScrollDragStart).toHaveBeenCalledTimes(1);
+    expect(t.onScrollDragStart).toHaveBeenCalledWith(50, 50);
+  });
+
+  it('onScrollDragEnd called on pointerup', () => {
+    const t = buildScrollTree();
+
+    dispatchInput(t.root, { type: 'pointerdown', x: 50, y: 50 });
+    dispatchInput(t.root, { type: 'pointerup', x: 50, y: 50 });
+
+    expect(t.onScrollDragEnd).toHaveBeenCalledTimes(1);
+    expect(t.onScrollDragEnd).toHaveBeenCalledWith(50, 50);
+  });
+
+  it('full drag lifecycle: down -> move (>5px) -> onPressOut fired, onPointerMove called -> up -> onPress NOT fired', () => {
+    const t = buildScrollTree();
+
+    // 1. pointerdown - pressIn fires, scrollDragStart fires
+    dispatchInput(t.root, { type: 'pointerdown', x: 100, y: 100 });
+    expect(t.onPressIn).toHaveBeenCalledTimes(1);
+    expect(t.onScrollDragStart).toHaveBeenCalledTimes(1);
+    expect(t.onScrollDragStart).toHaveBeenCalledWith(100, 100);
+
+    // 2. small move within threshold - no press cancellation
+    dispatchInput(t.root, { type: 'pointermove', x: 100, y: 103 });
+    expect(t.onPressOut).not.toHaveBeenCalled();
+    expect(t.onPointerMove).toHaveBeenCalledTimes(1);
+
+    // 3. move beyond threshold - press cancelled, onPressOut fires
+    dispatchInput(t.root, { type: 'pointermove', x: 100, y: 120 });
+    expect(t.onPressOut).toHaveBeenCalledTimes(1);
+    expect(t.onPointerMove).toHaveBeenCalledTimes(2);
+    expect(t.onPointerMove).toHaveBeenCalledWith(100, 120);
+
+    // 4. further moves do not fire onPressOut again
+    dispatchInput(t.root, { type: 'pointermove', x: 100, y: 140 });
+    expect(t.onPressOut).toHaveBeenCalledTimes(1);
+    expect(t.onPointerMove).toHaveBeenCalledTimes(3);
+
+    // 5. pointerup - onPress NOT fired, onScrollDragEnd fires
+    dispatchInput(t.root, { type: 'pointerup', x: 100, y: 140 });
+    expect(t.onPress).not.toHaveBeenCalled();
+    expect(t.onScrollDragEnd).toHaveBeenCalledTimes(1);
+    expect(t.onScrollDragEnd).toHaveBeenCalledWith(100, 140);
+    // onPressOut should NOT fire again on pointerup (already fired during drag)
+    expect(t.onPressOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('drag on area with no pressable child still dispatches scroll events', () => {
+    const onPointerMove = mock((_x: number, _y: number) => {});
+    const onScrollDragStart = mock((_x: number, _y: number) => {});
+    const onScrollDragEnd = mock((_x: number, _y: number) => {});
+
+    const root = makeNode('View', { width: 400, height: 400 });
+
+    const scrollContainer = makeNode('View', { width: 300, height: 300 });
+    scrollContainer.handlers = { onPointerMove, onScrollDragStart, onScrollDragEnd };
+    appendChild(root, scrollContainer);
+
+    layout(root);
+
+    // Touch area inside scrollContainer but no press handler child
+    dispatchInput(root, { type: 'pointerdown', x: 150, y: 150 });
+    expect(onScrollDragStart).toHaveBeenCalledTimes(1);
+
+    dispatchInput(root, { type: 'pointermove', x: 150, y: 170 });
+    expect(onPointerMove).toHaveBeenCalledTimes(1);
+
+    dispatchInput(root, { type: 'pointerup', x: 150, y: 170 });
+    expect(onScrollDragEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('no scroll events when there is no scrollable ancestor', () => {
+    const onPress = mock(() => {});
+    const onPressIn = mock(() => {});
+    const onPressOut = mock(() => {});
+
+    const root = makeNode('View', { width: 200, height: 200 });
+    const child = makeNode('View', { width: 100, height: 100 });
+    child.handlers = { onPress, onPressIn, onPressOut };
+    appendChild(root, child);
+    layout(root);
+
+    // Normal press cycle without scrollable ancestor should work fine
+    dispatchInput(root, { type: 'pointerdown', x: 50, y: 50 });
+    dispatchInput(root, { type: 'pointerup', x: 50, y: 50 });
+
+    expect(onPressIn).toHaveBeenCalledTimes(1);
+    expect(onPressOut).toHaveBeenCalledTimes(1);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 });

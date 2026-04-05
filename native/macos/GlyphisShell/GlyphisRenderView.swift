@@ -1,7 +1,7 @@
 import AppKit
 
 /// Custom NSView that renders Glyphis framework render commands using Core Graphics.
-/// Receives a JSON-derived array of render commands from the JS runtime and
+/// Receives a JSON array of render command dictionaries from the JS runtime and
 /// draws them in `draw(_:)` using CGContext.
 class GlyphisRenderView: NSView {
     private var renderCommands: [[String: Any]] = []
@@ -54,10 +54,10 @@ class GlyphisRenderView: NSView {
                 drawBorder(ctx: ctx, cmd: cmd)
             case "clip-start":
                 ctx.saveGState()
-                if let x = asFloat(cmd["x"]), let y = asFloat(cmd["y"]),
-                   let w = asFloat(cmd["width"]), let h = asFloat(cmd["height"]) {
+                if let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
+                   let w = cgFloat(cmd, "width"), let h = cgFloat(cmd, "height") {
                     let clipRect = CGRect(x: x, y: y, width: w, height: h)
-                    if let radius = resolveBorderRadius(cmd["borderRadius"]) {
+                    if let radius = cgFloat(cmd, "borderRadius"), radius > 0 {
                         let path = CGPath(roundedRect: clipRect, cornerWidth: radius, cornerHeight: radius, transform: nil)
                         ctx.addPath(path)
                         ctx.clip()
@@ -73,15 +73,18 @@ class GlyphisRenderView: NSView {
         }
     }
 
+    // MARK: - Command Drawers
+
     private func drawRect(ctx: CGContext, cmd: [String: Any]) {
-        guard let x = asFloat(cmd["x"]), let y = asFloat(cmd["y"]),
-              let w = asFloat(cmd["width"]), let h = asFloat(cmd["height"]),
-              let colorStr = cmd["color"] as? String else { return }
+        guard let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
+              let w = cgFloat(cmd, "width"), let h = cgFloat(cmd, "height"),
+              let colorStr = cmd["color"] as? String
+        else { return }
 
         let hasOpacity = cmd["opacity"] != nil
         if hasOpacity {
             ctx.saveGState()
-            ctx.setAlpha(asFloat(cmd["opacity"]) ?? 1.0)
+            ctx.setAlpha(cgFloat(cmd, "opacity") ?? 1.0)
         }
 
         let color = parseColor(colorStr)
@@ -89,7 +92,7 @@ class GlyphisRenderView: NSView {
 
         let rect = CGRect(x: x, y: y, width: w, height: h)
 
-        if let radius = resolveBorderRadius(cmd["borderRadius"]), radius > 0 {
+        if let radius = cgFloat(cmd, "borderRadius"), radius > 0 {
             let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
             ctx.addPath(path)
             ctx.fillPath()
@@ -103,22 +106,23 @@ class GlyphisRenderView: NSView {
     }
 
     private func drawText(ctx: CGContext, cmd: [String: Any]) {
-        guard let x = asFloat(cmd["x"]), let y = asFloat(cmd["y"]),
+        guard let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
               let text = cmd["text"] as? String,
               let colorStr = cmd["color"] as? String,
-              let fontSize = asFloat(cmd["fontSize"]) else { return }
+              let fontSize = cgFloat(cmd, "fontSize")
+        else { return }
 
-        let maxWidth = asFloat(cmd["maxWidth"]) ?? CGFloat.greatestFiniteMagnitude
+        let maxWidth: CGFloat = cgFloat(cmd, "maxWidth") ?? CGFloat.greatestFiniteMagnitude
 
         let hasOpacity = cmd["opacity"] != nil
         if hasOpacity {
             ctx.saveGState()
-            ctx.setAlpha(asFloat(cmd["opacity"]) ?? 1.0)
+            ctx.setAlpha(cgFloat(cmd, "opacity") ?? 1.0)
         }
 
-        let fontWeight = (cmd["fontWeight"] as? String) ?? "normal"
-        let textAlign = (cmd["textAlign"] as? String) ?? "left"
-        let lineHeight = asFloat(cmd["lineHeight"]) ?? fontSize * 1.2
+        let fontWeight = cmd["fontWeight"] as? String ?? "normal"
+        let textAlign = cmd["textAlign"] as? String ?? "left"
+        let lineHeight = fontSize * 1.2
 
         let color = NSColor(cgColor: parseColor(colorStr)) ?? NSColor.black
         let weight = mapFontWeight(fontWeight)
@@ -160,55 +164,70 @@ class GlyphisRenderView: NSView {
     }
 
     private func drawBorder(ctx: CGContext, cmd: [String: Any]) {
-        guard let x = asFloat(cmd["x"]), let y = asFloat(cmd["y"]),
-              let w = asFloat(cmd["width"]), let h = asFloat(cmd["height"]),
-              let widths = asFloatArray(cmd["widths"]), widths.count == 4,
-              let colorStr = cmd["color"] as? String else { return }
+        guard let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
+              let w = cgFloat(cmd, "width"), let h = cgFloat(cmd, "height"),
+              let colorStr = cmd["color"] as? String,
+              let widths = cmd["widths"] as? [Any], widths.count == 4
+        else { return }
+
+        let tw = CGFloat(truncating: widths[0] as? NSNumber ?? 0)
+        let rw = CGFloat(truncating: widths[1] as? NSNumber ?? 0)
+        let bw = CGFloat(truncating: widths[2] as? NSNumber ?? 0)
+        let lw = CGFloat(truncating: widths[3] as? NSNumber ?? 0)
 
         let hasOpacity = cmd["opacity"] != nil
         if hasOpacity {
             ctx.saveGState()
-            ctx.setAlpha(asFloat(cmd["opacity"]) ?? 1.0)
+            ctx.setAlpha(cgFloat(cmd, "opacity") ?? 1.0)
         }
 
         let borderColor = parseColor(colorStr)
 
         // Top
-        if widths[0] > 0 {
+        if tw > 0 {
             ctx.setStrokeColor(borderColor)
-            ctx.setLineWidth(widths[0])
-            ctx.move(to: CGPoint(x: x, y: y + widths[0] / 2))
-            ctx.addLine(to: CGPoint(x: x + w, y: y + widths[0] / 2))
+            ctx.setLineWidth(tw)
+            ctx.move(to: CGPoint(x: x, y: y + tw / 2))
+            ctx.addLine(to: CGPoint(x: x + w, y: y + tw / 2))
             ctx.strokePath()
         }
         // Right
-        if widths[1] > 0 {
+        if rw > 0 {
             ctx.setStrokeColor(borderColor)
-            ctx.setLineWidth(widths[1])
-            ctx.move(to: CGPoint(x: x + w - widths[1] / 2, y: y))
-            ctx.addLine(to: CGPoint(x: x + w - widths[1] / 2, y: y + h))
+            ctx.setLineWidth(rw)
+            ctx.move(to: CGPoint(x: x + w - rw / 2, y: y))
+            ctx.addLine(to: CGPoint(x: x + w - rw / 2, y: y + h))
             ctx.strokePath()
         }
         // Bottom
-        if widths[2] > 0 {
+        if bw > 0 {
             ctx.setStrokeColor(borderColor)
-            ctx.setLineWidth(widths[2])
-            ctx.move(to: CGPoint(x: x, y: y + h - widths[2] / 2))
-            ctx.addLine(to: CGPoint(x: x + w, y: y + h - widths[2] / 2))
+            ctx.setLineWidth(bw)
+            ctx.move(to: CGPoint(x: x, y: y + h - bw / 2))
+            ctx.addLine(to: CGPoint(x: x + w, y: y + h - bw / 2))
             ctx.strokePath()
         }
         // Left
-        if widths[3] > 0 {
+        if lw > 0 {
             ctx.setStrokeColor(borderColor)
-            ctx.setLineWidth(widths[3])
-            ctx.move(to: CGPoint(x: x + widths[3] / 2, y: y))
-            ctx.addLine(to: CGPoint(x: x + widths[3] / 2, y: y + h))
+            ctx.setLineWidth(lw)
+            ctx.move(to: CGPoint(x: x + lw / 2, y: y))
+            ctx.addLine(to: CGPoint(x: x + lw / 2, y: y + h))
             ctx.strokePath()
         }
 
         if hasOpacity {
             ctx.restoreGState()
         }
+    }
+
+    // MARK: - Helpers
+
+    private func cgFloat(_ cmd: [String: Any], _ key: String) -> CGFloat? {
+        if let n = cmd[key] as? NSNumber {
+            return CGFloat(n.doubleValue)
+        }
+        return nil
     }
 
     // MARK: - Color Parsing
@@ -253,7 +272,7 @@ class GlyphisRenderView: NSView {
         // Handle hex
         if hexStr.hasPrefix("#") { hexStr = String(hexStr.dropFirst()) }
 
-        // 3-char hex shorthand (#FFF → #FFFFFF)
+        // 3-char hex shorthand (#FFF -> #FFFFFF)
         if hexStr.count == 3 {
             let c = Array(hexStr)
             hexStr = "\(c[0])\(c[0])\(c[1])\(c[1])\(c[2])\(c[2])"
@@ -278,8 +297,6 @@ class GlyphisRenderView: NSView {
         return CGColor(red: r, green: g, blue: b, alpha: 1.0)
     }
 
-    // MARK: - Helpers
-
     private func mapFontWeight(_ weight: String) -> NSFont.Weight {
         switch weight {
         case "bold", "700": return .bold
@@ -294,32 +311,16 @@ class GlyphisRenderView: NSView {
         }
     }
 
-    /// Converts Any (Int, Double, NSNumber) to CGFloat.
-    private func asFloat(_ value: Any?) -> CGFloat? {
-        if let d = value as? Double { return CGFloat(d) }
-        if let i = value as? Int { return CGFloat(i) }
-        if let n = value as? NSNumber { return CGFloat(n.doubleValue) }
-        return nil
-    }
-
-    /// Converts Any to [CGFloat].
-    private func asFloatArray(_ value: Any?) -> [CGFloat]? {
-        guard let arr = value as? [Any] else { return nil }
-        return arr.compactMap { asFloat($0) }
-    }
-
-    /// Resolves borderRadius from a single number or an array (uses first element).
-    private func resolveBorderRadius(_ value: Any?) -> CGFloat? {
-        if let r = asFloat(value) { return r }
-        if let arr = asFloatArray(value), let first = arr.first { return first }
-        return nil
-    }
-
     // MARK: - Mouse Handling
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         onTouch?("pointerdown", p.x, p.y)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        onTouch?("pointermove", p.x, p.y)
     }
 
     override func mouseUp(with event: NSEvent) {

@@ -21,6 +21,8 @@ declare const __yoga: {
   nodeLayoutGetHeight(nodeId: number): number;
   nodeMarkDirty(nodeId: number): void;
   enableMeasure(nodeId: number): void;
+  enableMeasureNative(nodeId: number, text: string, fontSize: number, fontFamily: string, fontWeight: string): void;
+  updateMeasureText(nodeId: number, text: string): void;
   nodeStyleSetDirection(nodeId: number, value: number): void;
   nodeStyleSetFlexDirection(nodeId: number, value: number): void;
   nodeStyleSetJustifyContent(nodeId: number, value: number): void;
@@ -60,6 +62,7 @@ declare const __yoga: {
   nodeStyleSetPaddingPercent(nodeId: number, edge: number, value: number): void;
   nodeStyleSetBorder(nodeId: number, edge: number, value: number): void;
   nodeStyleSetGap(nodeId: number, gutter: number, value: number): void;
+  nodeStyleSetBatch(nodeId: number, styleJson: string): void;
 };
 
 // ---------------------------------------------------------------------------
@@ -400,6 +403,14 @@ class NativeNode {
     }
   }
 
+  enableMeasureNative(text: string, fontSize: number, fontFamily: string, fontWeight: string): void {
+    __yoga.enableMeasureNative(this._id, text, fontSize, fontFamily, fontWeight);
+  }
+
+  updateMeasureText(text: string): void {
+    __yoga.updateMeasureText(this._id, text);
+  }
+
   unsetMeasureFunc(): void {
     measureFuncs.delete(this._id);
   }
@@ -709,6 +720,10 @@ class NativeNode {
 
   setBoxSizing(_value: BoxSizing): void {
     // Not exposed through __yoga bridge
+  }
+
+  applyStyleBatch(style: Record<string, any>): void {
+    __yoga.nodeStyleSetBatch(this._id, JSON.stringify(style));
   }
 
   // -- Getters (stubs returning defaults — not needed by our rendering code) -

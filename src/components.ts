@@ -7,6 +7,9 @@ interface ViewProps {
   onPress?: () => void;
   onPressIn?: () => void;
   onPressOut?: () => void;
+  onPointerMove?: (x: number, y: number) => void;
+  onScrollDragStart?: (x: number, y: number) => void;
+  onScrollDragEnd?: (x: number, y: number) => void;
   children?: any;
 }
 
@@ -20,6 +23,9 @@ export function View(props: ViewProps): GlyphisNode {
   if (props.onPress) glyphisRenderer.setProp(node, 'onPress', props.onPress);
   if (props.onPressIn) glyphisRenderer.setProp(node, 'onPressIn', props.onPressIn);
   if (props.onPressOut) glyphisRenderer.setProp(node, 'onPressOut', props.onPressOut);
+  if (props.onPointerMove) glyphisRenderer.setProp(node, 'onPointerMove', props.onPointerMove);
+  if (props.onScrollDragStart) glyphisRenderer.setProp(node, 'onScrollDragStart', props.onScrollDragStart);
+  if (props.onScrollDragEnd) glyphisRenderer.setProp(node, 'onScrollDragEnd', props.onScrollDragEnd);
 
   glyphisRenderer.insert(node, () => props.children);
 
