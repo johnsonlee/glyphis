@@ -130,7 +130,6 @@ class YogaBridge {
 
         // -- Batch style setter --
 
-        registerBatchStyleSetter(on: yoga)
 
         context.setObject(yoga, forKeyedSubscript: "__yoga" as NSString)
     }
@@ -582,112 +581,6 @@ class YogaBridge {
 
     // MARK: - Batch Style Setter
 
-    private func registerBatchStyleSetter(on yoga: JSValue) {
-        let setBatch: @convention(block) (Int, String) -> Void = { [weak self] nodeId, jsonString in
-            guard let self = self, let node = self.nodes[nodeId] else { return }
-            guard let data = jsonString.data(using: .utf8),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return }
-
-            // Dimensions (number or "auto" or "N%")
-            if let v = dict["width"] { self.applyDimension(node, v, set: YGNodeStyleSetWidth, setPercent: YGNodeStyleSetWidthPercent, setAuto: YGNodeStyleSetWidthAuto) }
-            if let v = dict["height"] { self.applyDimension(node, v, set: YGNodeStyleSetHeight, setPercent: YGNodeStyleSetHeightPercent, setAuto: YGNodeStyleSetHeightAuto) }
-            if let v = dict["minWidth"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMinWidth, setPercent: YGNodeStyleSetMinWidthPercent) }
-            if let v = dict["minHeight"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMinHeight, setPercent: YGNodeStyleSetMinHeightPercent) }
-            if let v = dict["maxWidth"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMaxWidth, setPercent: YGNodeStyleSetMaxWidthPercent) }
-            if let v = dict["maxHeight"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMaxHeight, setPercent: YGNodeStyleSetMaxHeightPercent) }
-
-            // Flex numeric
-            if let v = dict["flex"] as? Double { YGNodeStyleSetFlex(node, Float(v)) }
-            if let v = dict["flexGrow"] as? Double { YGNodeStyleSetFlexGrow(node, Float(v)) }
-            if let v = dict["flexShrink"] as? Double { YGNodeStyleSetFlexShrink(node, Float(v)) }
-            if let v = dict["flexBasis"] { self.applyDimension(node, v, set: YGNodeStyleSetFlexBasis, setPercent: YGNodeStyleSetFlexBasisPercent, setAuto: YGNodeStyleSetFlexBasisAuto) }
-
-            // Flex enums (already resolved to Int by JS)
-            if let v = dict["flexDirection"] as? Int { YGNodeStyleSetFlexDirection(node, YGFlexDirection(rawValue: Int32(v))!) }
-            if let v = dict["flexWrap"] as? Int { YGNodeStyleSetFlexWrap(node, YGWrap(rawValue: Int32(v))!) }
-
-            // Alignment enums
-            if let v = dict["justifyContent"] as? Int { YGNodeStyleSetJustifyContent(node, YGJustify(rawValue: Int32(v))!) }
-            if let v = dict["alignItems"] as? Int { YGNodeStyleSetAlignItems(node, YGAlign(rawValue: Int32(v))!) }
-            if let v = dict["alignSelf"] as? Int { YGNodeStyleSetAlignSelf(node, YGAlign(rawValue: Int32(v))!) }
-            if let v = dict["alignContent"] as? Int { YGNodeStyleSetAlignContent(node, YGAlign(rawValue: Int32(v))!) }
-
-            // Padding (keys: padding_<edge>)
-            for edge: Int32 in [0, 1, 2, 3, 6, 7, 8] {
-                if let v = dict["padding_\(edge)"] as? Double {
-                    YGNodeStyleSetPadding(node, YGEdge(rawValue: edge)!, Float(v))
-                }
-            }
-
-            // Margin (keys: margin_<edge>)
-            for edge: Int32 in [0, 1, 2, 3, 6, 7, 8] {
-                if let v = dict["margin_\(edge)"] as? Double {
-                    YGNodeStyleSetMargin(node, YGEdge(rawValue: edge)!, Float(v))
-                }
-            }
-
-            // Position type
-            if let v = dict["positionType"] as? Int { YGNodeStyleSetPositionType(node, YGPositionType(rawValue: Int32(v))!) }
-
-            // Position edges (keys: position_<edge>)
-            for edge: Int32 in [0, 1, 2, 3] {
-                if let v = dict["position_\(edge)"] as? Double {
-                    YGNodeStyleSetPosition(node, YGEdge(rawValue: edge)!, Float(v))
-                }
-            }
-
-            // Border (keys: border_<edge>)
-            for edge: Int32 in [0, 1, 2, 3, 8] {
-                if let v = dict["border_\(edge)"] as? Double {
-                    YGNodeStyleSetBorder(node, YGEdge(rawValue: edge)!, Float(v))
-                }
-            }
-
-            // Display / overflow
-            if let v = dict["display"] as? Int { YGNodeStyleSetDisplay(node, YGDisplay(rawValue: Int32(v))!) }
-            if let v = dict["overflow"] as? Int { YGNodeStyleSetOverflow(node, YGOverflow(rawValue: Int32(v))!) }
-
-            // Gap (keys: gap_<gutter>)
-            for gutter: Int32 in [0, 1, 2] {
-                if let v = dict["gap_\(gutter)"] as? Double {
-                    YGNodeStyleSetGap(node, YGGutter(rawValue: gutter)!, Float(v))
-                }
-            }
-        }
-        yoga.setObject(setBatch, forKeyedSubscript: "nodeStyleSetBatch" as NSString)
-    }
-
-    /// Applies a dimension value that may be a number, "auto", or "N%" string.
-    private func applyDimension(
-        _ node: YGNodeRef, _ value: Any,
-        set: (YGNodeRef, Float) -> Void,
-        setPercent: (YGNodeRef, Float) -> Void,
-        setAuto: (YGNodeRef) -> Void
-    ) {
-        if let s = value as? String {
-            if s == "auto" {
-                setAuto(node)
-            } else if s.hasSuffix("%"), let num = Float(s.dropLast()) {
-                setPercent(node, num)
-            }
-        } else if let n = value as? Double {
-            set(node, Float(n))
-        }
-    }
-
-    /// Applies a dimension value that may be a number or "N%" string (no auto variant).
-    private func applyDimensionNoAuto(
-        _ node: YGNodeRef, _ value: Any,
-        set: (YGNodeRef, Float) -> Void,
-        setPercent: (YGNodeRef, Float) -> Void
-    ) {
-        if let s = value as? String, s.hasSuffix("%"), let num = Float(s.dropLast()) {
-            setPercent(node, num)
-        } else if let n = value as? Double {
-            set(node, Float(n))
-        }
-    }
 
     // MARK: - Helpers
 

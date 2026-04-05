@@ -26,6 +26,9 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
     if (inputCallback) inputCallback({ type: 'pointermove', ...canvasCoords(e) });
   });
 
+  var imageCache: Map<string, HTMLImageElement> = new Map();
+  var imageLoadCallback: ((id: string, w: number, h: number) => void) | null = null;
+
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d')!;
 
@@ -55,6 +58,9 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
           case 'border':
             drawBorder(ctx, cmd);
             break;
+          case 'image':
+            drawImage(ctx, cmd, imageCache);
+            break;
           case 'clip-start':
             ctx.save();
             clipRegion(ctx, cmd);
@@ -72,6 +78,28 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
 
     onInput(callback: (event: InputEvent) => void): void {
       inputCallback = callback;
+    },
+
+    loadImage(imageId: string, url: string): void {
+      if (imageCache.has(imageId)) {
+        var cached = imageCache.get(imageId)!;
+        if (imageLoadCallback) imageLoadCallback(imageId, cached.naturalWidth, cached.naturalHeight);
+        return;
+      }
+      var img = new (globalThis as any).Image() as HTMLImageElement;
+      img.crossOrigin = 'anonymous';
+      img.onload = function() {
+        imageCache.set(imageId, img);
+        if (imageLoadCallback) imageLoadCallback(imageId, img.naturalWidth, img.naturalHeight);
+      };
+      img.onerror = function() {
+        // Silent fail for v1
+      };
+      img.src = url;
+    },
+
+    onImageLoaded(callback: (id: string, w: number, h: number) => void): void {
+      imageLoadCallback = callback;
     },
   };
 }
@@ -137,6 +165,49 @@ function clipRegion(ctx: CanvasRenderingContext2D, cmd: Extract<RenderCommand, {
     ctx.rect(cmd.x, cmd.y, cmd.width, cmd.height);
   }
   ctx.clip();
+}
+
+function drawImage(ctx: CanvasRenderingContext2D, cmd: Extract<RenderCommand, { type: 'image' }>, cache: Map<string, HTMLImageElement>): void {
+  var img = cache.get(cmd.imageId);
+  if (!img) return;
+
+  ctx.save();
+  if (cmd.opacity != null) ctx.globalAlpha = cmd.opacity;
+
+  // Clip for borderRadius
+  if (cmd.borderRadius) {
+    roundRect(ctx, cmd.x, cmd.y, cmd.width, cmd.height, cmd.borderRadius);
+    ctx.clip();
+  }
+
+  var imgW = img.naturalWidth;
+  var imgH = img.naturalHeight;
+  var scale: number;
+  var dw: number;
+  var dh: number;
+  var dx: number;
+  var dy: number;
+
+  if (cmd.resizeMode === 'stretch') {
+    ctx.drawImage(img, cmd.x, cmd.y, cmd.width, cmd.height);
+  } else if (cmd.resizeMode === 'contain') {
+    scale = Math.min(cmd.width / imgW, cmd.height / imgH);
+    dw = imgW * scale;
+    dh = imgH * scale;
+    dx = cmd.x + (cmd.width - dw) / 2;
+    dy = cmd.y + (cmd.height - dh) / 2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+  } else {
+    // cover (default)
+    scale = Math.max(cmd.width / imgW, cmd.height / imgH);
+    dw = imgW * scale;
+    dh = imgH * scale;
+    dx = cmd.x + (cmd.width - dw) / 2;
+    dy = cmd.y + (cmd.height - dh) / 2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+  }
+
+  ctx.restore();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

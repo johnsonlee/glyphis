@@ -1,5 +1,6 @@
 import JavaScriptCore
 import UIKit
+import ImageIO
 
 /// Manages a JavaScriptCore context that runs the Glyphis JS bundle and bridges
 /// render commands, text measurement, animation frames, and touch events
@@ -110,6 +111,28 @@ class GlyphisRuntime {
             ]
         }
         bridge.setObject(getViewport, forKeyedSubscript: "getViewportSize" as NSString)
+
+        // loadImage: fetches an image by URL and caches it for rendering
+        let loadImage: @convention(block) (String, String) -> Void = { [weak self] imageId, url in
+            guard let self = self else { return }
+            guard let imageUrl = URL(string: url) else { return }
+            URLSession.shared.dataTask(with: imageUrl) { data, response, error in
+                guard let data = data, error == nil else { return }
+                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+                let width = CGFloat(cgImage.width)
+                let height = CGFloat(cgImage.height)
+                DispatchQueue.main.async {
+                    self.renderView?.imageCache[imageId] = cgImage
+                    let safeId = imageId.replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                    self.context.evaluateScript(
+                        "if(typeof __glyphis_onImageLoaded==='function')__glyphis_onImageLoaded('\(safeId)',\(width),\(height))"
+                    )
+                }
+            }.resume()
+        }
+        bridge.setObject(loadImage, forKeyedSubscript: "loadImage" as NSString)
 
         // platform identifier
         bridge.setObject("ios", forKeyedSubscript: "platform" as NSString)

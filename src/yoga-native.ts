@@ -62,7 +62,6 @@ declare const __yoga: {
   nodeStyleSetPaddingPercent(nodeId: number, edge: number, value: number): void;
   nodeStyleSetBorder(nodeId: number, edge: number, value: number): void;
   nodeStyleSetGap(nodeId: number, gutter: number, value: number): void;
-  nodeStyleSetBatch(nodeId: number, styleJson: string): void;
 };
 
 // ---------------------------------------------------------------------------
@@ -722,9 +721,6 @@ class NativeNode {
     // Not exposed through __yoga bridge
   }
 
-  applyStyleBatch(style: Record<string, any>): void {
-    __yoga.nodeStyleSetBatch(this._id, JSON.stringify(style));
-  }
 
   // -- Getters (stubs returning defaults — not needed by our rendering code) -
 

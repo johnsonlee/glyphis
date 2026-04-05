@@ -1,6 +1,7 @@
 package io.johnsonlee.glyphis.shell
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Handler
@@ -8,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URL
 
 
 /**
@@ -107,6 +109,29 @@ class GlyphisRuntime(
             renderView.width.toDouble() / density,
             renderView.height.toDouble() / density,
         )
+    }
+
+    /** Called from JNI when JS invokes `__glyphis_native.loadImage(imageId, url)`. */
+    @Suppress("unused") // called from native code
+    fun onLoadImage(imageId: String, url: String) {
+        Thread {
+            try {
+                val stream = URL(url).openStream()
+                val bitmap = BitmapFactory.decodeStream(stream)
+                stream.close()
+                if (bitmap != null) {
+                    handler.post {
+                        renderView.imageCache[imageId] = bitmap
+                        val safeId = imageId.replace("\\", "\\\\").replace("'", "\\'")
+                        nativeEvaluateScript(
+                            "if(typeof __glyphis_onImageLoaded==='function')__glyphis_onImageLoaded('$safeId',${bitmap.width.toDouble() / density},${bitmap.height.toDouble() / density})"
+                        )
+                    }
+                }
+            } catch (_: Exception) {
+                Log.w(TAG, "Failed to load image: $url")
+            }
+        }.start()
     }
 
     /** Called from JNI when JS invokes `__glyphis_native.scheduleTimer(id, delayMs)`. */

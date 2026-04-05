@@ -1,5 +1,5 @@
 export { render, glyphisRenderer, scheduleRender } from './renderer';
-export { View, Text, Button } from './components';
+export { View, Text, Image, Button } from './components';
 export { RecyclerList } from './recycler-list';
 export type { RecyclerListProps, RecyclerListHandle } from './recycler-list';
 export { ScrollView } from './scroll-view';

@@ -299,4 +299,162 @@ describe('generateCommands', () => {
     const childRect = cmds.find((c) => c.type === 'rect') as any;
     expect(childRect.clipId).toBe(clipStart.id);
   });
+
+  // ---- Image tag tests ----
+
+  it('image node with loaded imageProps emits image render command', () => {
+    const root = makeNode('image', { width: 200, height: 150 });
+    root.imageProps = {
+      src: 'https://example.com/photo.jpg',
+      imageId: 'photo-1',
+      resizeMode: 'cover',
+      loaded: true,
+    };
+    layout(root);
+    const cmds = generateCommands(root);
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0]).toMatchObject({
+      type: 'image',
+      imageId: 'photo-1',
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 150,
+      resizeMode: 'cover',
+    });
+  });
+
+  it('image node with unloaded imageProps emits no image command', () => {
+    const root = makeNode('image', { width: 200, height: 150 });
+    root.imageProps = {
+      src: 'https://example.com/photo.jpg',
+      imageId: 'photo-1',
+      resizeMode: 'cover',
+      loaded: false,
+    };
+    layout(root);
+    const cmds = generateCommands(root);
+    expect(cmds).toHaveLength(0);
+  });
+
+  it('image node with backgroundColor emits rect as placeholder when not loaded', () => {
+    const root = makeNode('image', {
+      width: 200,
+      height: 150,
+      backgroundColor: '#cccccc',
+    });
+    root.imageProps = {
+      src: 'https://example.com/photo.jpg',
+      imageId: 'photo-2',
+      resizeMode: 'stretch',
+      loaded: false,
+    };
+    layout(root);
+    const cmds = generateCommands(root);
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0]).toMatchObject({
+      type: 'rect',
+      color: '#cccccc',
+      width: 200,
+      height: 150,
+    });
+  });
+
+  it('image node with backgroundColor emits rect AND image when loaded', () => {
+    const root = makeNode('image', {
+      width: 200,
+      height: 150,
+      backgroundColor: '#cccccc',
+    });
+    root.imageProps = {
+      src: 'https://example.com/photo.jpg',
+      imageId: 'photo-3',
+      resizeMode: 'cover',
+      loaded: true,
+    };
+    layout(root);
+    const cmds = generateCommands(root);
+    expect(cmds).toHaveLength(2);
+    expect(cmds[0]).toMatchObject({ type: 'rect', color: '#cccccc' });
+    expect(cmds[1]).toMatchObject({ type: 'image', imageId: 'photo-3' });
+  });
+
+  it('image command includes borderRadius, opacity, clipId', () => {
+    const wrapper = makeNode('View', {
+      width: 300,
+      height: 300,
+      overflow: 'hidden',
+    });
+    const imgNode = makeNode('image', {
+      width: 200,
+      height: 150,
+      borderRadius: 12,
+      opacity: 0.8,
+    });
+    imgNode.imageProps = {
+      src: 'https://example.com/photo.jpg',
+      imageId: 'photo-4',
+      resizeMode: 'contain',
+      loaded: true,
+    };
+    appendChild(wrapper, imgNode);
+    layout(wrapper);
+
+    const cmds = generateCommands(wrapper);
+    var clipStartCmd = cmds.find(function (c) { return c.type === 'clip-start'; }) as any;
+    var imageCmd = cmds.find(function (c) { return c.type === 'image'; }) as any;
+    expect(imageCmd).toBeDefined();
+    expect(imageCmd.borderRadius).toBe(12);
+    expect(imageCmd.opacity).toBe(0.8);
+    expect(imageCmd.clipId).toBe(clipStartCmd.id);
+  });
+
+  it('image command has correct resizeMode', () => {
+    var modes = ['stretch', 'contain', 'cover'];
+    for (var i = 0; i < modes.length; i++) {
+      var root = makeNode('image', { width: 100, height: 100 });
+      root.imageProps = {
+        src: 'https://example.com/photo.jpg',
+        imageId: 'photo-mode-' + i,
+        resizeMode: modes[i],
+        loaded: true,
+      };
+      layout(root);
+      var cmds = generateCommands(root);
+      expect(cmds).toHaveLength(1);
+      expect((cmds[0] as any).resizeMode).toBe(modes[i]);
+    }
+  });
+
+  it('image node with no imageProps emits no commands', () => {
+    var root = makeNode('image', { width: 200, height: 150 });
+    layout(root);
+    var cmds = generateCommands(root);
+    expect(cmds).toHaveLength(0);
+  });
+
+  it('image node does not walk children (returns early)', () => {
+    var root = makeNode('image', {
+      width: 200,
+      height: 150,
+    });
+    root.imageProps = {
+      src: 'https://example.com/photo.jpg',
+      imageId: 'photo-5',
+      resizeMode: 'cover',
+      loaded: true,
+    };
+    var child = makeNode('View', {
+      width: 50,
+      height: 50,
+      backgroundColor: '#f00',
+    });
+    appendChild(root, child);
+    layout(root);
+
+    var cmds = generateCommands(root);
+    // Image returns early, so child should not be walked
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0].type).toBe('image');
+  });
 });

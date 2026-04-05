@@ -4,6 +4,7 @@ declare const __glyphis_native: {
   submitRenderCommands(packed: string): void;
   measureText(text: string, fontSize: number, fontFamily: string, fontWeight: string): { width: number; height: number };
   getViewportSize(): { width: number; height: number };
+  loadImage(imageId: string, url: string): void;
   platform: 'ios' | 'android';
 };
 
@@ -38,6 +39,16 @@ export function createNativePlatform(): NativePlatform {
         if (type === 'pointerdown' || type === 'pointerup' || type === 'pointermove') {
           callback({ type, x, y } as any);
         }
+      };
+    },
+
+    loadImage(imageId: string, url: string) {
+      __glyphis_native.loadImage(imageId, url);
+    },
+
+    onImageLoaded(callback: (id: string, w: number, h: number) => void) {
+      (globalThis as any).__glyphis_onImageLoaded = function(id: string, w: number, h: number) {
+        callback(id, w, h);
       };
     },
 

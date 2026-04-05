@@ -71,6 +71,7 @@ export type RenderCommand =
   | { type: 'text'; x: number; y: number; text: string; color: string; fontSize: number; fontWeight?: string; fontFamily?: string; textAlign?: string; maxWidth?: number; opacity?: number; clipId?: number }
   | { type: 'border'; x: number; y: number; width: number; height: number; color: string; widths: [number, number, number, number]; borderRadius?: number; opacity?: number; clipId?: number }
   | { type: 'clip-start'; id: number; x: number; y: number; width: number; height: number; borderRadius?: number }
+  | { type: 'image'; imageId: string; x: number; y: number; width: number; height: number; resizeMode: string; opacity?: number; borderRadius?: number; clipId?: number }
   | { type: 'clip-end'; id: number };
 
 export interface Platform {
@@ -78,6 +79,8 @@ export interface Platform {
   render(commands: RenderCommand[]): void;
   getViewport(): { width: number; height: number };
   onInput(callback: (event: InputEvent) => void): void;
+  loadImage(imageId: string, url: string): void;
+  onImageLoaded(callback: (imageId: string, width: number, height: number) => void): void;
 }
 
 export type InputEvent =

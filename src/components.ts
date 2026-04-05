@@ -50,6 +50,32 @@ export function Text(props: TextProps): GlyphisNode {
   return node;
 }
 
+interface ImageComponentProps {
+  src: string;
+  resizeMode?: 'cover' | 'contain' | 'stretch';
+  style?: Style;
+  onLoad?: (event: { width: number; height: number }) => void;
+}
+
+export function Image(props: ImageComponentProps): GlyphisNode {
+  var node = glyphisRenderer.createElement('image');
+
+  glyphisRenderer.setProp(node, 'imageProps', {
+    src: props.src,
+    imageId: props.src,
+    resizeMode: props.resizeMode || 'cover',
+    loaded: false,
+  });
+
+  if (props.onLoad) glyphisRenderer.setProp(node, 'onLoad', props.onLoad);
+
+  glyphisRenderer.effect(function() {
+    if (props.style) glyphisRenderer.setProp(node, 'style', props.style);
+  });
+
+  return node;
+}
+
 interface ButtonProps {
   title: string;
   onPress: () => void;
