@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
 
-// Mock the __glyph_native bridge that would exist in the JSC environment
+// Mock the __glyphis_native bridge that would exist in the JSC environment
 const mockBridge = {
   submitRenderCommands: mock(() => {}),
   measureText: mock((_text: string, fontSize: number, _fontFamily: string, _fontWeight: string) => ({
@@ -12,7 +12,7 @@ const mockBridge = {
 };
 
 // Install the mock before importing the module
-(globalThis as any).__glyph_native = mockBridge;
+(globalThis as any).__glyphis_native = mockBridge;
 
 describe('iOS Platform', () => {
   beforeEach(() => {
@@ -59,10 +59,10 @@ describe('iOS Platform', () => {
   });
 
   it('touch handler is registered on globalThis', async () => {
-    // After render() is called, __glyph_handleTouch should be set
+    // After render() is called, __glyphis_handleTouch should be set
     // We cannot call render() without a full React element, so just check
     // the function shape expectation
-    expect(typeof (globalThis as any).__glyph_handleTouch === 'function' ||
-           typeof (globalThis as any).__glyph_handleTouch === 'undefined').toBe(true);
+    expect(typeof (globalThis as any).__glyphis_handleTouch === 'function' ||
+           typeof (globalThis as any).__glyphis_handleTouch === 'undefined').toBe(true);
   });
 });

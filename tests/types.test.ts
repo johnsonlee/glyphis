@@ -219,11 +219,11 @@ describe('resolveBorderRadius', () => {
 
 describe('Symbols', () => {
   it('Fragment is the correct symbol', () => {
-    expect(Fragment).toBe(Symbol.for('glyph.fragment'));
+    expect(Fragment).toBe(Symbol.for('glyphis.fragment'));
   });
 
   it('TextNode is the correct symbol', () => {
-    expect(TextNode).toBe(Symbol.for('glyph.text'));
+    expect(TextNode).toBe(Symbol.for('glyphis.text'));
   });
 
   it('Fragment and TextNode are different symbols', () => {

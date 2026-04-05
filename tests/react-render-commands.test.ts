@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { generateNodeRenderCommands } from '../src/react/render-commands';
-import { GlyphNode, HOST_TYPES } from '../src/react/glyph-node';
+import { GlyphisNode, HOST_TYPES } from '../src/react/glyphis-node';
 import { setDebugMode } from '../src/render-tree';
 import type { LayoutOutput } from '../src/layout';
 import type { AnyRenderCommand, RectCommand, TextCommand, BorderCommand, ImageCommand, ClipCommand, OpacityCommand } from '../src/types';
 
-function createLayoutMap(entries: [GlyphNode, LayoutOutput][]): Map<GlyphNode, LayoutOutput> {
+function createLayoutMap(entries: [GlyphisNode, LayoutOutput][]): Map<GlyphisNode, LayoutOutput> {
   return new Map(entries);
 }
 
@@ -14,7 +14,7 @@ describe('generateNodeRenderCommands', () => {
     setDebugMode(false);
   });
   it('node with backgroundColor produces rect command', () => {
-    const node = new GlyphNode('glyph-view', { style: { backgroundColor: '#FF0000' } });
+    const node = new GlyphisNode('glyphis-view', { style: { backgroundColor: '#FF0000' } });
     const layout: LayoutOutput = { x: 10, y: 20, width: 100, height: 50, children: [] };
     const layoutMap = createLayoutMap([[node, layout]]);
 
@@ -29,7 +29,7 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('node with borderWidth produces border command', () => {
-    const node = new GlyphNode('glyph-view', {
+    const node = new GlyphisNode('glyphis-view', {
       style: { borderWidth: 2, borderColor: '#000000' },
     });
     const layout: LayoutOutput = { x: 0, y: 0, width: 100, height: 50, children: [] };
@@ -43,10 +43,10 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('text leaf produces text command with parent style inheritance', () => {
-    const parent = new GlyphNode(HOST_TYPES.TEXT, {
+    const parent = new GlyphisNode(HOST_TYPES.TEXT, {
       style: { color: '#333333', fontSize: 18, fontWeight: 'bold' },
     });
-    const leaf = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello');
+    const leaf = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello');
     parent.appendChild(leaf);
 
     const parentLayout: LayoutOutput = {
@@ -70,8 +70,8 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('text leaf uses default styles when parent has none', () => {
-    const parent = new GlyphNode(HOST_TYPES.TEXT, { style: {} });
-    const leaf = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'Default');
+    const parent = new GlyphisNode(HOST_TYPES.TEXT, { style: {} });
+    const leaf = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'Default');
     parent.appendChild(leaf);
 
     const parentLayout: LayoutOutput = {
@@ -93,7 +93,7 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('opacity wraps commands', () => {
-    const node = new GlyphNode('glyph-view', {
+    const node = new GlyphisNode('glyphis-view', {
       style: { opacity: 0.5, backgroundColor: 'blue' },
     });
     const layout: LayoutOutput = { x: 0, y: 0, width: 100, height: 50, children: [] };
@@ -106,7 +106,7 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('overflow hidden wraps in clip/restore', () => {
-    const node = new GlyphNode('glyph-view', {
+    const node = new GlyphisNode('glyphis-view', {
       style: { overflow: 'hidden', backgroundColor: '#000' },
     });
     const layout: LayoutOutput = { x: 5, y: 10, width: 100, height: 50, children: [] };
@@ -126,7 +126,7 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('overflow scroll also wraps in clip/restore', () => {
-    const node = new GlyphNode('glyph-view', { style: { overflow: 'scroll' } });
+    const node = new GlyphisNode('glyphis-view', { style: { overflow: 'scroll' } });
     const layout: LayoutOutput = { x: 0, y: 0, width: 100, height: 50, children: [] };
     const layoutMap = createLayoutMap([[node, layout]]);
 
@@ -136,7 +136,7 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('image node produces image command', () => {
-    const node = new GlyphNode(HOST_TYPES.IMAGE, {
+    const node = new GlyphisNode(HOST_TYPES.IMAGE, {
       src: 'https://example.com/img.png',
       style: { borderRadius: 8 },
     });
@@ -153,8 +153,8 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('nested nodes produce commands in correct order', () => {
-    const parent = new GlyphNode('glyph-view', { style: { backgroundColor: 'red' } });
-    const child = new GlyphNode('glyph-view', { style: { backgroundColor: 'blue' } });
+    const parent = new GlyphisNode('glyphis-view', { style: { backgroundColor: 'red' } });
+    const child = new GlyphisNode('glyphis-view', { style: { backgroundColor: 'blue' } });
     parent.appendChild(child);
 
     const parentLayout: LayoutOutput = {
@@ -178,15 +178,15 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('node without layout is skipped', () => {
-    const node = new GlyphNode('glyph-view', { style: { backgroundColor: 'red' } });
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const node = new GlyphisNode('glyphis-view', { style: { backgroundColor: 'red' } });
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
 
     const commands = generateNodeRenderCommands(node, layoutMap);
     expect(commands).toEqual([]);
   });
 
   it('opacity 1 does not produce opacity commands', () => {
-    const node = new GlyphNode('glyph-view', { style: { opacity: 1 } });
+    const node = new GlyphisNode('glyphis-view', { style: { opacity: 1 } });
     const layout: LayoutOutput = { x: 0, y: 0, width: 100, height: 50, children: [] };
     const layoutMap = createLayoutMap([[node, layout]]);
 
@@ -195,7 +195,7 @@ describe('generateNodeRenderCommands', () => {
   });
 
   it('node without visual props produces no rect/text/image commands', () => {
-    const node = new GlyphNode('glyph-view', { style: {} });
+    const node = new GlyphisNode('glyphis-view', { style: {} });
     const layout: LayoutOutput = { x: 0, y: 0, width: 100, height: 50, children: [] };
     const layoutMap = createLayoutMap([[node, layout]]);
 

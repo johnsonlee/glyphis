@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { nodeToLayoutInput, buildNodeLayoutMap } from '../src/react/node-to-layout';
-import { GlyphNode, HOST_TYPES } from '../src/react/glyph-node';
+import { GlyphisNode, HOST_TYPES } from '../src/react/glyphis-node';
 import type { Renderer } from '../src/types';
 import type { LayoutOutput } from '../src/layout';
 
@@ -20,7 +20,7 @@ describe('nodeToLayoutInput', () => {
   const renderer = createMockRenderer();
 
   it('produces correct LayoutInput for simple node', () => {
-    const node = new GlyphNode('glyph-view', { style: { flex: 1, backgroundColor: 'red' } });
+    const node = new GlyphisNode('glyphis-view', { style: { flex: 1, backgroundColor: 'red' } });
     const input = nodeToLayoutInput(node, renderer);
     expect(input.style).toEqual({ flex: 1, backgroundColor: 'red' });
     expect(input.children).toEqual([]);
@@ -29,9 +29,9 @@ describe('nodeToLayoutInput', () => {
   });
 
   it('produces nested LayoutInput for nested nodes', () => {
-    const parent = new GlyphNode('glyph-view', { style: { flex: 1 } });
-    const child1 = new GlyphNode('glyph-view', { style: { width: 100 } });
-    const child2 = new GlyphNode('glyph-view', { style: { width: 200 } });
+    const parent = new GlyphisNode('glyphis-view', { style: { flex: 1 } });
+    const child1 = new GlyphisNode('glyphis-view', { style: { width: 100 } });
+    const child2 = new GlyphisNode('glyphis-view', { style: { width: 200 } });
     parent.appendChild(child1);
     parent.appendChild(child2);
 
@@ -42,7 +42,7 @@ describe('nodeToLayoutInput', () => {
   });
 
   it('sets text and measureText for text leaf node', () => {
-    const textLeaf = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello');
+    const textLeaf = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello');
     const input = nodeToLayoutInput(textLeaf, renderer);
     expect(input.text).toBe('Hello');
     expect(input.measureText).toBeDefined();
@@ -53,8 +53,8 @@ describe('nodeToLayoutInput', () => {
   });
 
   it('text leaf inherits fontSize from parent', () => {
-    const parent = new GlyphNode(HOST_TYPES.TEXT, { style: { fontSize: 24 } });
-    const leaf = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'Big');
+    const parent = new GlyphisNode(HOST_TYPES.TEXT, { style: { fontSize: 24 } });
+    const leaf = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'Big');
     parent.appendChild(leaf);
 
     const parentInput = nodeToLayoutInput(parent, renderer);
@@ -67,9 +67,9 @@ describe('nodeToLayoutInput', () => {
   });
 
   it('host text node with string children sets text from leaves', () => {
-    const textNode = new GlyphNode(HOST_TYPES.TEXT, { style: { fontSize: 16 } });
-    const leaf1 = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello ');
-    const leaf2 = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'World');
+    const textNode = new GlyphisNode(HOST_TYPES.TEXT, { style: { fontSize: 16 } });
+    const leaf1 = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello ');
+    const leaf2 = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'World');
     textNode.appendChild(leaf1);
     textNode.appendChild(leaf2);
 
@@ -79,20 +79,20 @@ describe('nodeToLayoutInput', () => {
   });
 
   it('empty node produces empty children array', () => {
-    const node = new GlyphNode('glyph-view', { style: {} });
+    const node = new GlyphisNode('glyphis-view', { style: {} });
     const input = nodeToLayoutInput(node, renderer);
     expect(input.children).toEqual([]);
   });
 
   it('node without style defaults to empty object in layout', () => {
-    const node = new GlyphNode('glyph-view', {});
+    const node = new GlyphisNode('glyphis-view', {});
     const input = nodeToLayoutInput(node, renderer);
     expect(input.style).toEqual({});
   });
 
   it('text node without text leaf children does not set text', () => {
-    const textNode = new GlyphNode(HOST_TYPES.TEXT, { style: { fontSize: 16 } });
-    const childView = new GlyphNode('glyph-view', {});
+    const textNode = new GlyphisNode(HOST_TYPES.TEXT, { style: { fontSize: 16 } });
+    const childView = new GlyphisNode('glyphis-view', {});
     textNode.appendChild(childView);
 
     const input = nodeToLayoutInput(textNode, renderer);
@@ -103,8 +103,8 @@ describe('nodeToLayoutInput', () => {
 
 describe('buildNodeLayoutMap', () => {
   it('maps nodes to layout outputs', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const child = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const child = new GlyphisNode('glyphis-view', {});
     root.appendChild(child);
 
     const layout: LayoutOutput = {
@@ -120,9 +120,9 @@ describe('buildNodeLayoutMap', () => {
   });
 
   it('maps deeply nested tree', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const child = new GlyphNode('glyph-view', {});
-    const grandchild = new GlyphNode('glyph-text', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const child = new GlyphisNode('glyphis-view', {});
+    const grandchild = new GlyphisNode('glyphis-text', {});
     root.appendChild(child);
     child.appendChild(grandchild);
 
@@ -143,9 +143,9 @@ describe('buildNodeLayoutMap', () => {
   });
 
   it('handles mismatched children counts gracefully', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const child1 = new GlyphNode('glyph-view', {});
-    const child2 = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const child1 = new GlyphisNode('glyphis-view', {});
+    const child2 = new GlyphisNode('glyphis-view', {});
     root.appendChild(child1);
     root.appendChild(child2);
 

@@ -57,7 +57,7 @@ function Counter() {
         fontWeight: 'bold' as const,
         marginBottom: 8,
       },
-    }, 'Glyph Counter'),
+    }, 'Glyphis Counter'),
 
     createElement(Text, {
       style: {
@@ -123,7 +123,7 @@ function App() {
           fontWeight: 'bold' as const,
           color: '#FFFFFF',
         },
-      }, 'My First Glyph App'),
+      }, 'My First Glyphis App'),
     ),
     createElement(Counter, {}),
   );

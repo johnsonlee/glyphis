@@ -1,32 +1,32 @@
 import { describe, it, expect } from 'bun:test';
 import React, { useState } from 'react';
-import { renderReact, GlyphNode, HOST_TYPES } from '../src/react/renderer';
+import { renderReact, GlyphisNode, HOST_TYPES } from '../src/react/renderer';
 import { View, Text, Button, Image, ScrollView, TextInput, FlatList } from '../src/react/components';
 
-function renderToTree(element: React.ReactElement): Promise<GlyphNode> {
-  const rootNode = new GlyphNode(HOST_TYPES.ROOT, {});
+function renderToTree(element: React.ReactElement): Promise<GlyphisNode> {
+  const rootNode = new GlyphisNode(HOST_TYPES.ROOT, {});
   renderReact(element, rootNode, () => {});
   return new Promise(resolve => setTimeout(() => resolve(rootNode), 100));
 }
 
-function collectNodes(node: GlyphNode): GlyphNode[] {
-  const result: GlyphNode[] = [node];
+function collectNodes(node: GlyphisNode): GlyphisNode[] {
+  const result: GlyphisNode[] = [node];
   for (const child of node.children) {
     result.push(...collectNodes(child));
   }
   return result;
 }
 
-function findByType(root: GlyphNode, type: string): GlyphNode[] {
+function findByType(root: GlyphisNode, type: string): GlyphisNode[] {
   return collectNodes(root).filter(n => n.type === type);
 }
 
 describe('React components', () => {
   describe('View', () => {
-    it('creates glyph-view with default column flexDirection', async () => {
+    it('creates glyphis-view with default column flexDirection', async () => {
       const el = React.createElement(View, {});
       const root = await renderToTree(el);
-      const views = findByType(root, 'glyph-view');
+      const views = findByType(root, 'glyphis-view');
       expect(views.length).toBe(1);
       expect(views[0].props.style.flexDirection).toBe('column');
       expect(views[0].props.style.display).toBe('flex');
@@ -35,7 +35,7 @@ describe('React components', () => {
     it('merges custom style with defaults', async () => {
       const el = React.createElement(View, { style: { flex: 1, backgroundColor: 'red' } });
       const root = await renderToTree(el);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.flex).toBe(1);
       expect(view.props.style.backgroundColor).toBe('red');
       expect(view.props.style.flexDirection).toBe('column');
@@ -45,23 +45,23 @@ describe('React components', () => {
       const handler = () => {};
       const el = React.createElement(View, { onPress: handler });
       const root = await renderToTree(el);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.onPress).toBe(handler);
     });
 
     it('passes testID', async () => {
       const el = React.createElement(View, { testID: 'myView' });
       const root = await renderToTree(el);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.testID).toBe('myView');
     });
   });
 
   describe('Text', () => {
-    it('creates glyph-text with default text styles', async () => {
+    it('creates glyphis-text with default text styles', async () => {
       const el = React.createElement(Text, {}, 'Hello');
       const root = await renderToTree(el);
-      const texts = findByType(root, 'glyph-text');
+      const texts = findByType(root, 'glyphis-text');
       expect(texts.length).toBe(1);
       expect(texts[0].props.style.color).toBe('#000000');
       expect(texts[0].props.style.fontSize).toBe(14);
@@ -79,7 +79,7 @@ describe('React components', () => {
     it('custom style overrides defaults', async () => {
       const el = React.createElement(Text, { style: { fontSize: 24, color: 'blue' } }, 'Custom');
       const root = await renderToTree(el);
-      const text = findByType(root, 'glyph-text')[0];
+      const text = findByType(root, 'glyphis-text')[0];
       expect(text.props.style.fontSize).toBe(24);
       expect(text.props.style.color).toBe('blue');
     });
@@ -90,10 +90,10 @@ describe('React components', () => {
       const el = React.createElement(Button, { title: 'Click Me' });
       const root = await renderToTree(el);
 
-      const views = findByType(root, 'glyph-view');
+      const views = findByType(root, 'glyphis-view');
       expect(views.length).toBeGreaterThanOrEqual(1);
 
-      const texts = findByType(root, 'glyph-text');
+      const texts = findByType(root, 'glyphis-text');
       expect(texts.length).toBe(1);
 
       const leaves = findByType(root, HOST_TYPES.TEXT_LEAF);
@@ -103,7 +103,7 @@ describe('React components', () => {
     it('applies button styling', async () => {
       const el = React.createElement(Button, { title: 'Test', color: '#FF0000' });
       const root = await renderToTree(el);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.backgroundColor).toBe('#FF0000');
       expect(view.props.style.borderRadius).toBe(4);
       expect(view.props.style.alignItems).toBe('center');
@@ -112,7 +112,7 @@ describe('React components', () => {
     it('disabled state changes appearance', async () => {
       const el = React.createElement(Button, { title: 'Disabled', disabled: true });
       const root = await renderToTree(el);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.backgroundColor).toBe('#CCCCCC');
       expect(view.props.style.opacity).toBe(0.6);
     });
@@ -120,26 +120,26 @@ describe('React components', () => {
     it('uses default blue color', async () => {
       const el = React.createElement(Button, { title: 'Default' });
       const root = await renderToTree(el);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.backgroundColor).toBe('#2196F3');
     });
 
     it('has white text', async () => {
       const el = React.createElement(Button, { title: 'White' });
       const root = await renderToTree(el);
-      const text = findByType(root, 'glyph-text')[0];
+      const text = findByType(root, 'glyphis-text')[0];
       expect(text.props.style.color).toBe('#FFFFFF');
     });
   });
 
   describe('Image', () => {
-    it('creates glyph-image with src', async () => {
+    it('creates glyphis-image with src', async () => {
       const el = React.createElement(Image, {
         src: 'https://example.com/img.png',
         style: { width: 100, height: 100 },
       });
       const root = await renderToTree(el);
-      const images = findByType(root, 'glyph-image');
+      const images = findByType(root, 'glyphis-image');
       expect(images.length).toBe(1);
       expect(images[0].props.src).toBe('https://example.com/img.png');
     });
@@ -150,7 +150,7 @@ describe('React components', () => {
         resizeMode: 'contain',
       });
       const root = await renderToTree(el);
-      const image = findByType(root, 'glyph-image')[0];
+      const image = findByType(root, 'glyphis-image')[0];
       expect(image.props.resizeMode).toBe('contain');
     });
   });
@@ -161,7 +161,7 @@ describe('React components', () => {
         React.createElement(View, { style: { height: 100 } }),
       );
       const root = await renderToTree(el);
-      const scrollViews = findByType(root, 'glyph-scroll-view');
+      const scrollViews = findByType(root, 'glyphis-scroll-view');
       expect(scrollViews.length).toBe(1);
       expect(scrollViews[0].props.style.overflow).toBe('scroll');
       expect(scrollViews[0].props.style.flex).toBe(1);
@@ -172,9 +172,9 @@ describe('React components', () => {
         React.createElement(View, {}),
       );
       const root = await renderToTree(el);
-      const scrollView = findByType(root, 'glyph-scroll-view')[0];
-      // ScrollView should have a glyph-view child as content container
-      const contentViews = scrollView.children.filter(c => c.type === 'glyph-view');
+      const scrollView = findByType(root, 'glyphis-scroll-view')[0];
+      // ScrollView should have a glyphis-view child as content container
+      const contentViews = scrollView.children.filter(c => c.type === 'glyphis-view');
       expect(contentViews.length).toBe(1);
     });
 
@@ -183,18 +183,18 @@ describe('React components', () => {
         React.createElement(View, {}),
       );
       const root = await renderToTree(el);
-      const scrollView = findByType(root, 'glyph-scroll-view')[0];
-      const contentView = scrollView.children.find(c => c.type === 'glyph-view');
+      const scrollView = findByType(root, 'glyphis-scroll-view')[0];
+      const contentView = scrollView.children.find(c => c.type === 'glyphis-view');
       expect(contentView).toBeDefined();
       expect(contentView!.props.style.flexDirection).toBe('row');
     });
   });
 
   describe('TextInput', () => {
-    it('creates glyph-text-input with default styling', async () => {
+    it('creates glyphis-text-input with default styling', async () => {
       const el = React.createElement(TextInput, { placeholder: 'Enter text' });
       const root = await renderToTree(el);
-      const inputs = findByType(root, 'glyph-text-input');
+      const inputs = findByType(root, 'glyphis-text-input');
       expect(inputs.length).toBe(1);
       expect(inputs[0].props.style.borderWidth).toBe(1);
       expect(inputs[0].props.style.borderRadius).toBe(4);
@@ -226,14 +226,14 @@ describe('React components', () => {
     it('non-editable has different background', async () => {
       const el = React.createElement(TextInput, { editable: false });
       const root = await renderToTree(el);
-      const input = findByType(root, 'glyph-text-input')[0];
+      const input = findByType(root, 'glyphis-text-input')[0];
       expect(input.props.style.backgroundColor).toBe('#F5F5F5');
     });
 
     it('multiline has minHeight', async () => {
       const el = React.createElement(TextInput, { multiline: true });
       const root = await renderToTree(el);
-      const input = findByType(root, 'glyph-text-input')[0];
+      const input = findByType(root, 'glyphis-text-input')[0];
       expect(input.props.style.minHeight).toBe(80);
     });
   });
@@ -260,7 +260,7 @@ describe('React components', () => {
           React.createElement(Text, {}, item),
       });
       const root = await renderToTree(el);
-      const scrollViews = findByType(root, 'glyph-scroll-view');
+      const scrollViews = findByType(root, 'glyphis-scroll-view');
       expect(scrollViews.length).toBe(1);
       expect(scrollViews[0].props.style.overflow).toBe('scroll');
     });
@@ -284,7 +284,7 @@ describe('React components', () => {
         horizontal: true,
       });
       const root = await renderToTree(el);
-      const scrollView = findByType(root, 'glyph-scroll-view')[0];
+      const scrollView = findByType(root, 'glyphis-scroll-view')[0];
       expect(scrollView.props.horizontal).toBe(true);
     });
 

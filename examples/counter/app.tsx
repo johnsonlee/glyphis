@@ -33,7 +33,7 @@ function Counter() {
         fontWeight: 'bold',
         marginBottom: 8,
       },
-    }, 'Glyph Counter'),
+    }, 'Glyphis Counter'),
 
     createElement(Text, {
       style: {
@@ -99,13 +99,13 @@ function App() {
           fontWeight: 'bold',
           color: '#FFFFFF',
         },
-      }, 'My First Glyph App'),
+      }, 'My First Glyphis App'),
     ),
     createElement(Counter, {}),
   );
 }
 
-const canvas = document.getElementById('glyph-root') as HTMLCanvasElement;
+const canvas = document.getElementById('glyphis-root') as HTMLCanvasElement;
 if (canvas) {
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * (window.devicePixelRatio || 1);

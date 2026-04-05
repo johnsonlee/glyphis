@@ -24,7 +24,7 @@ async function main() {
 
   // The canvas is centered in the page. Find its position.
   const canvasBox = await page.evaluate(() => {
-    const canvas = document.getElementById('glyph-root');
+    const canvas = document.getElementById('glyphis-root');
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };

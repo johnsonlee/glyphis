@@ -26,11 +26,11 @@ export function getHTML(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Glyph Dev</title>
+  <title>Glyphis Dev</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #f0f0f0; display: flex; justify-content: center; align-items: center; }
-    #glyph-root {
+    #glyphis-root {
       width: 390px; height: 844px;
       background: white;
       border-radius: 20px;
@@ -38,13 +38,13 @@ export function getHTML(): string {
       overflow: hidden;
     }
     @media (max-width: 430px) {
-      #glyph-root { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
+      #glyphis-root { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
       body { background: white; }
     }
   </style>
 </head>
 <body>
-  <canvas id="glyph-root"></canvas>
+  <canvas id="glyphis-root"></canvas>
   <script>
     var evtSource = new EventSource('/__hmr');
     evtSource.onmessage = function(e) {
@@ -56,7 +56,7 @@ export function getHTML(): string {
       setTimeout(function() { window.location.reload(); }, 1000);
     };
   </script>
-  <div id="glyph-debug-toggle" style="position:fixed;top:8px;right:8px;z-index:9999;">
+  <div id="glyphis-debug-toggle" style="position:fixed;top:8px;right:8px;z-index:9999;">
     <button onclick="toggleDebug()" style="padding:4px 8px;font-size:11px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;opacity:0.7;">Debug</button>
   </div>
   <script>
@@ -216,7 +216,7 @@ export async function startDevServer(options: DevServerOptions): Promise<{
   });
 
   console.log(`
-  Glyph Dev Server
+  Glyphis Dev Server
 
   Local:   http://localhost:${port}
   Entry:   ${entryPoint}
@@ -238,6 +238,6 @@ export async function startDevServer(options: DevServerOptions): Promise<{
 }
 
 if (import.meta.main) {
-  const entryPoint = process.argv[2] || 'src/app.tsx';
+  const entryPoint = process.argv[2] || 'examples/calculator/app.ts';
   startDevServer({ entryPoint, port: 3000 });
 }

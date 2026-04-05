@@ -8,7 +8,7 @@ import { ScrollView } from '../src/components/ScrollView';
 import { TextInput } from '../src/components/TextInput';
 import { FlatList } from '../src/components/FlatList';
 import { createElement } from '../src/jsx';
-import type { Fiber, VNode, GlyphPointerEvent } from '../src/types';
+import type { Fiber, VNode, GlyphisPointerEvent } from '../src/types';
 
 function createTestFiber(): Fiber {
   return {
@@ -36,7 +36,7 @@ function renderComponent<P>(Component: (props: P) => VNode, props: P): { result:
   return { result, fiber };
 }
 
-function createMockPointerEvent(overrides: Partial<GlyphPointerEvent> = {}): GlyphPointerEvent {
+function createMockPointerEvent(overrides: Partial<GlyphisPointerEvent> = {}): GlyphisPointerEvent {
   return {
     type: 'press',
     x: 0,

@@ -1,28 +1,28 @@
 import { describe, it, expect } from 'bun:test';
 import { defineComponent, h } from '@vue/runtime-core';
-import { createApp, GlyphNode, HOST_TYPES } from '../src/vue/renderer';
+import { createApp, GlyphisNode, HOST_TYPES } from '../src/vue/renderer';
 import { GView, GText, GButton, GImage } from '../src/vue/components';
 
-function renderToTree(component: any): Promise<GlyphNode> {
-  const root = new GlyphNode(HOST_TYPES.ROOT, {});
+function renderToTree(component: any): Promise<GlyphisNode> {
+  const root = new GlyphisNode(HOST_TYPES.ROOT, {});
   const app = createApp(component);
   app.mount(root as any);
   return new Promise(resolve => setTimeout(() => resolve(root), 50));
 }
 
-function collectNodes(node: GlyphNode): GlyphNode[] {
-  const result: GlyphNode[] = [node];
+function collectNodes(node: GlyphisNode): GlyphisNode[] {
+  const result: GlyphisNode[] = [node];
   for (const child of node.children) {
     result.push(...collectNodes(child));
   }
   return result;
 }
 
-function findByType(root: GlyphNode, type: string): GlyphNode[] {
+function findByType(root: GlyphisNode, type: string): GlyphisNode[] {
   return collectNodes(root).filter(n => n.type === type);
 }
 
-function findTextLeaves(root: GlyphNode): string[] {
+function findTextLeaves(root: GlyphisNode): string[] {
   return collectNodes(root)
     .filter(n => n.type === HOST_TYPES.TEXT_LEAF && n.text)
     .map(n => n.text!);
@@ -30,14 +30,14 @@ function findTextLeaves(root: GlyphNode): string[] {
 
 describe('Vue components', () => {
   describe('GView', () => {
-    it('creates glyph-view with column flexDirection', async () => {
+    it('creates glyphis-view with column flexDirection', async () => {
       const component = defineComponent({
         setup() {
           return () => h(GView, {});
         },
       });
       const root = await renderToTree(component);
-      const views = findByType(root, 'glyph-view');
+      const views = findByType(root, 'glyphis-view');
       expect(views.length).toBe(1);
       expect(views[0].props.style.flexDirection).toBe('column');
       expect(views[0].props.style.display).toBe('flex');
@@ -50,7 +50,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.flex).toBe(1);
       expect(view.props.style.backgroundColor).toBe('red');
       expect(view.props.style.flexDirection).toBe('column');
@@ -64,7 +64,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.onPress).toBe(handler);
     });
 
@@ -75,7 +75,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.testID).toBe('myView');
     });
 
@@ -88,21 +88,21 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.children.length).toBeGreaterThanOrEqual(1);
       expect(findTextLeaves(root)).toContain('child text');
     });
   });
 
   describe('GText', () => {
-    it('creates glyph-text with default text styles', async () => {
+    it('creates glyphis-text with default text styles', async () => {
       const component = defineComponent({
         setup() {
           return () => h(GText, {}, () => 'Hello');
         },
       });
       const root = await renderToTree(component);
-      const texts = findByType(root, 'glyph-text');
+      const texts = findByType(root, 'glyphis-text');
       expect(texts.length).toBe(1);
       expect(texts[0].props.style.color).toBe('#000000');
       expect(texts[0].props.style.fontSize).toBe(14);
@@ -116,7 +116,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const text = findByType(root, 'glyph-text')[0];
+      const text = findByType(root, 'glyphis-text')[0];
       expect(text.props.style.fontSize).toBe(24);
       expect(text.props.style.color).toBe('blue');
     });
@@ -142,9 +142,9 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const views = findByType(root, 'glyph-view');
+      const views = findByType(root, 'glyphis-view');
       expect(views.length).toBeGreaterThanOrEqual(1);
-      const texts = findByType(root, 'glyph-text');
+      const texts = findByType(root, 'glyphis-text');
       expect(texts.length).toBe(1);
       expect(findTextLeaves(root)).toContain('Click Me');
     });
@@ -156,7 +156,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.backgroundColor).toBe('#FF0000');
       expect(view.props.style.borderRadius).toBe(4);
       expect(view.props.style.alignItems).toBe('center');
@@ -169,7 +169,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.backgroundColor).toBe('#CCCCCC');
       expect(view.props.style.opacity).toBe(0.6);
     });
@@ -181,7 +181,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const view = findByType(root, 'glyph-view')[0];
+      const view = findByType(root, 'glyphis-view')[0];
       expect(view.props.style.backgroundColor).toBe('#2196F3');
     });
 
@@ -192,13 +192,13 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const text = findByType(root, 'glyph-text')[0];
+      const text = findByType(root, 'glyphis-text')[0];
       expect(text.props.style.color).toBe('#FFFFFF');
     });
   });
 
   describe('GImage', () => {
-    it('creates glyph-image with src', async () => {
+    it('creates glyphis-image with src', async () => {
       const component = defineComponent({
         setup() {
           return () => h(GImage, {
@@ -208,7 +208,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const images = findByType(root, 'glyph-image');
+      const images = findByType(root, 'glyphis-image');
       expect(images.length).toBe(1);
       expect(images[0].props.src).toBe('https://example.com/img.png');
     });
@@ -220,7 +220,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const image = findByType(root, 'glyph-image')[0];
+      const image = findByType(root, 'glyphis-image')[0];
       expect(image.props.resizeMode).toBe('contain');
     });
 
@@ -231,7 +231,7 @@ describe('Vue components', () => {
         },
       });
       const root = await renderToTree(component);
-      const image = findByType(root, 'glyph-image')[0];
+      const image = findByType(root, 'glyphis-image')[0];
       expect(image.props.resizeMode).toBe('cover');
     });
   });

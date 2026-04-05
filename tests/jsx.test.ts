@@ -160,7 +160,7 @@ describe('createElement()', () => {
 
   it('handles Fragment', () => {
     const node = createElement(CFragment, null, 'a', 'b');
-    expect(node.type).toBe(Symbol.for('glyph.fragment'));
+    expect(node.type).toBe(Symbol.for('glyphis.fragment'));
     expect(node.props.children).toEqual(['a', 'b']);
   });
 

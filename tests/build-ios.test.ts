@@ -16,10 +16,10 @@ describe('iOS build script', () => {
 
   it('native Swift source files exist', async () => {
     const swiftFiles = [
-      'native/ios/GlyphShell/AppDelegate.swift',
-      'native/ios/GlyphShell/GlyphViewController.swift',
-      'native/ios/GlyphShell/GlyphRenderView.swift',
-      'native/ios/GlyphShell/GlyphRuntime.swift',
+      'native/ios/GlyphisShell/AppDelegate.swift',
+      'native/ios/GlyphisShell/GlyphisViewController.swift',
+      'native/ios/GlyphisShell/GlyphisRenderView.swift',
+      'native/ios/GlyphisShell/GlyphisRuntime.swift',
     ];
     for (const path of swiftFiles) {
       const file = Bun.file(path);
@@ -28,16 +28,16 @@ describe('iOS build script', () => {
   });
 
   it('Xcode project file exists', async () => {
-    const file = Bun.file('native/ios/GlyphShell.xcodeproj/project.pbxproj');
+    const file = Bun.file('native/ios/GlyphisShell.xcodeproj/project.pbxproj');
     expect(await file.exists()).toBe(true);
   });
 
   it('Info.plist exists and is valid', async () => {
-    const file = Bun.file('native/ios/GlyphShell/Info.plist');
+    const file = Bun.file('native/ios/GlyphisShell/Info.plist');
     expect(await file.exists()).toBe(true);
     const content = await file.text();
-    expect(content).toContain('com.glyph.shell');
-    expect(content).toContain('GlyphShell');
+    expect(content).toContain('com.glyphis.shell');
+    expect(content).toContain('GlyphisShell');
   });
 
   it('iOS platform module exists', async () => {
@@ -45,12 +45,12 @@ describe('iOS build script', () => {
     expect(await file.exists()).toBe(true);
     const content = await file.text();
     expect(content).toContain('NativeRenderer');
-    expect(content).toContain('__glyph_native');
+    expect(content).toContain('__glyphis_native');
   });
 
   it('Xcode scheme exists', async () => {
     const file = Bun.file(
-      'native/ios/GlyphShell.xcodeproj/xcshareddata/xcschemes/GlyphShell.xcscheme',
+      'native/ios/GlyphisShell.xcodeproj/xcshareddata/xcschemes/GlyphisShell.xcscheme',
     );
     expect(await file.exists()).toBe(true);
   });

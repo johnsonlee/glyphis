@@ -15,9 +15,9 @@ describe('getHTML', () => {
     expect(html).toContain('<!DOCTYPE html>');
   });
 
-  it('contains a canvas element with id glyph-root', () => {
+  it('contains a canvas element with id glyphis-root', () => {
     const html = getHTML();
-    expect(html).toContain('<canvas id="glyph-root">');
+    expect(html).toContain('<canvas id="glyphis-root">');
   });
 
   it('contains the HMR EventSource script', () => {
@@ -77,7 +77,7 @@ describe('getHTML', () => {
 
   it('contains title tag', () => {
     const html = getHTML();
-    expect(html).toContain('<title>Glyph Dev</title>');
+    expect(html).toContain('<title>Glyphis Dev</title>');
   });
 });
 
@@ -302,7 +302,7 @@ describe('createFetchHandler', () => {
     expect(res.headers.get('Content-Type')).toBe('text/html');
     const body = await res.text();
     expect(body).toContain('<!DOCTYPE html>');
-    expect(body).toContain('glyph-root');
+    expect(body).toContain('glyphis-root');
   });
 
   it('serves HTML at /index.html', async () => {

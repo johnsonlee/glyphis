@@ -3,7 +3,7 @@ import {
   createLayoutEngine,
   setDefaultLayoutEngine,
   getDefaultLayoutEngine,
-  GlyphLayoutEngine,
+  GlyphisLayoutEngine,
   YogaLayoutEngine,
 } from '../src/layout/index';
 import type { LayoutInput } from '../src/layout';
@@ -29,20 +29,20 @@ describe('layout engine factory', () => {
     expect(engine).toBeInstanceOf(YogaLayoutEngine);
   });
 
-  it('should create GlyphLayoutEngine when explicitly requested', () => {
-    const engine = createLayoutEngine('glyph');
-    expect(engine).toBeInstanceOf(GlyphLayoutEngine);
+  it('should create GlyphisLayoutEngine when explicitly requested', () => {
+    const engine = createLayoutEngine('glyphis');
+    expect(engine).toBeInstanceOf(GlyphisLayoutEngine);
   });
 
   it('should respect setDefaultLayoutEngine', () => {
-    setDefaultLayoutEngine('glyph');
-    expect(getDefaultLayoutEngine()).toBe('glyph');
+    setDefaultLayoutEngine('glyphis');
+    expect(getDefaultLayoutEngine()).toBe('glyphis');
     const engine = createLayoutEngine();
-    expect(engine).toBeInstanceOf(GlyphLayoutEngine);
+    expect(engine).toBeInstanceOf(GlyphisLayoutEngine);
   });
 
   it('should override default with explicit type', () => {
-    setDefaultLayoutEngine('glyph');
+    setDefaultLayoutEngine('glyphis');
     const engine = createLayoutEngine('yoga');
     expect(engine).toBeInstanceOf(YogaLayoutEngine);
   });
@@ -52,15 +52,15 @@ describe('layout engine factory', () => {
       const input = node({ width: 200, height: 100 });
 
       const yogaEngine = createLayoutEngine('yoga');
-      const glyphEngine = createLayoutEngine('glyph');
+      const glyphisEngine = createLayoutEngine('glyphis');
 
       const yogaResult = yogaEngine.computeLayout(input, 400, 400);
-      const glyphResult = glyphEngine.computeLayout(input, 400, 400);
+      const glyphisResult = glyphisEngine.computeLayout(input, 400, 400);
 
       expect(yogaResult.width).toBe(200);
       expect(yogaResult.height).toBe(100);
-      expect(glyphResult.width).toBe(200);
-      expect(glyphResult.height).toBe(100);
+      expect(glyphisResult.width).toBe(200);
+      expect(glyphisResult.height).toBe(100);
     });
 
     it('should compute layout with children', () => {
@@ -70,21 +70,21 @@ describe('layout engine factory', () => {
       ]);
 
       const yogaEngine = createLayoutEngine('yoga');
-      const glyphEngine = createLayoutEngine('glyph');
+      const glyphisEngine = createLayoutEngine('glyphis');
 
       const yogaResult = yogaEngine.computeLayout(input, 400, 400);
-      const glyphResult = glyphEngine.computeLayout(input, 400, 400);
+      const glyphisResult = glyphisEngine.computeLayout(input, 400, 400);
 
       expect(yogaResult.children.length).toBe(2);
-      expect(glyphResult.children.length).toBe(2);
+      expect(glyphisResult.children.length).toBe(2);
 
       // Both engines should place first child at x=0
       expect(yogaResult.children[0].x).toBe(0);
-      expect(glyphResult.children[0].x).toBe(0);
+      expect(glyphisResult.children[0].x).toBe(0);
 
       // Both should place second child at x=100
       expect(yogaResult.children[1].x).toBe(100);
-      expect(glyphResult.children[1].x).toBe(100);
+      expect(glyphisResult.children[1].x).toBe(100);
     });
 
     it('should handle flex grow in both engines', () => {
@@ -94,14 +94,14 @@ describe('layout engine factory', () => {
       ]);
 
       const yogaEngine = createLayoutEngine('yoga');
-      const glyphEngine = createLayoutEngine('glyph');
+      const glyphisEngine = createLayoutEngine('glyphis');
 
       const yogaResult = yogaEngine.computeLayout(input, 400, 400);
-      const glyphResult = glyphEngine.computeLayout(input, 400, 400);
+      const glyphisResult = glyphisEngine.computeLayout(input, 400, 400);
 
       // Both should split evenly
       expect(Math.abs(yogaResult.children[0].width - 200)).toBeLessThanOrEqual(1);
-      expect(Math.abs(glyphResult.children[0].width - 200)).toBeLessThanOrEqual(1);
+      expect(Math.abs(glyphisResult.children[0].width - 200)).toBeLessThanOrEqual(1);
     });
   });
 });

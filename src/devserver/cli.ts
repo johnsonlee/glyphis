@@ -4,8 +4,8 @@ import { parseCliArgs } from './index';
 const { port, entryPoint } = parseCliArgs(process.argv.slice(2));
 
 if (!entryPoint) {
-  console.error('Usage: glyph dev <entry-point> [--port <port>]');
-  console.error('Example: glyph dev src/app.tsx --port 3000');
+  console.error('Usage: glyphis dev <entry-point> [--port <port>]');
+  console.error('Example: glyphis dev src/app.tsx --port 3000');
   process.exit(1);
 }
 

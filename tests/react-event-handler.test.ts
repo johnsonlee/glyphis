@@ -5,7 +5,7 @@ import {
   dispatchNodeEvent,
   NodeEventManager,
 } from '../src/react/event-handler';
-import { GlyphNode, HOST_TYPES } from '../src/react/glyph-node';
+import { GlyphisNode, HOST_TYPES } from '../src/react/glyphis-node';
 import type { LayoutOutput } from '../src/layout';
 
 function createLayout(x: number, y: number, w: number, h: number, children: LayoutOutput[] = []): LayoutOutput {
@@ -14,13 +14,13 @@ function createLayout(x: number, y: number, w: number, h: number, children: Layo
 
 describe('hitTestNode', () => {
   it('finds deepest node at coordinates', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const parent = new GlyphNode('glyph-view', {});
-    const child = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const parent = new GlyphisNode('glyphis-view', {});
+    const child = new GlyphisNode('glyphis-view', {});
     root.appendChild(parent);
     parent.appendChild(child);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 400, 400, []));
     layoutMap.set(parent, createLayout(0, 0, 200, 200, []));
     layoutMap.set(child, createLayout(10, 10, 50, 50, []));
@@ -32,11 +32,11 @@ describe('hitTestNode', () => {
   });
 
   it('returns null for coordinates outside all nodes', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const child = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const child = new GlyphisNode('glyphis-view', {});
     root.appendChild(child);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 100, 100));
     layoutMap.set(child, createLayout(10, 10, 50, 50));
 
@@ -46,11 +46,11 @@ describe('hitTestNode', () => {
   });
 
   it('returns null for coordinates inside root but outside children', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const child = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const child = new GlyphisNode('glyphis-view', {});
     root.appendChild(child);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 400, 400));
     layoutMap.set(child, createLayout(10, 10, 50, 50));
 
@@ -60,13 +60,13 @@ describe('hitTestNode', () => {
   });
 
   it('checks children in reverse order (z-order)', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const below = new GlyphNode('glyph-view', { testID: 'below' });
-    const above = new GlyphNode('glyph-view', { testID: 'above' });
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const below = new GlyphisNode('glyphis-view', { testID: 'below' });
+    const above = new GlyphisNode('glyphis-view', { testID: 'above' });
     root.appendChild(below);
     root.appendChild(above);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 400, 400));
     // Overlapping layouts
     layoutMap.set(below, createLayout(0, 0, 100, 100));
@@ -78,13 +78,13 @@ describe('hitTestNode', () => {
   });
 
   it('respects overflow hidden clipping', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const parent = new GlyphNode('glyph-view', { style: { overflow: 'hidden' } });
-    const child = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const parent = new GlyphisNode('glyphis-view', { style: { overflow: 'hidden' } });
+    const child = new GlyphisNode('glyphis-view', {});
     root.appendChild(parent);
     parent.appendChild(child);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 400, 400));
     layoutMap.set(parent, createLayout(0, 0, 50, 50));
     // Child extends beyond parent
@@ -96,11 +96,11 @@ describe('hitTestNode', () => {
   });
 
   it('returns correct layout coordinates', () => {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const child = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const child = new GlyphisNode('glyphis-view', {});
     root.appendChild(child);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 400, 400));
     layoutMap.set(child, createLayout(20, 30, 100, 50));
 
@@ -112,7 +112,7 @@ describe('hitTestNode', () => {
 
 describe('createNodePointerEvent', () => {
   it('creates event with correct shape', () => {
-    const target = new GlyphNode('glyph-view', {});
+    const target = new GlyphisNode('glyphis-view', {});
     const event = createNodePointerEvent('press', 100, 200, target);
     expect(event.type).toBe('press');
     expect(event.x).toBe(100);
@@ -138,9 +138,9 @@ describe('createNodePointerEvent', () => {
 
 describe('dispatchNodeEvent', () => {
   it('bubbles through parent chain', () => {
-    const grandparent = new GlyphNode('glyph-view', {});
-    const parent = new GlyphNode('glyph-view', {});
-    const child = new GlyphNode('glyph-view', {});
+    const grandparent = new GlyphisNode('glyphis-view', {});
+    const parent = new GlyphisNode('glyphis-view', {});
+    const child = new GlyphisNode('glyphis-view', {});
     grandparent.appendChild(parent);
     parent.appendChild(child);
 
@@ -156,8 +156,8 @@ describe('dispatchNodeEvent', () => {
   });
 
   it('stops propagation when stopPropagation is called', () => {
-    const parent = new GlyphNode('glyph-view', {});
-    const child = new GlyphNode('glyph-view', {});
+    const parent = new GlyphisNode('glyphis-view', {});
+    const child = new GlyphisNode('glyphis-view', {});
     parent.appendChild(child);
 
     const calls: string[] = [];
@@ -171,7 +171,7 @@ describe('dispatchNodeEvent', () => {
   });
 
   it('dispatches pressIn events', () => {
-    const node = new GlyphNode('glyph-view', {});
+    const node = new GlyphisNode('glyphis-view', {});
     const handler = mock(() => {});
     node.props.onPressIn = handler;
 
@@ -182,7 +182,7 @@ describe('dispatchNodeEvent', () => {
   });
 
   it('dispatches pressOut events', () => {
-    const node = new GlyphNode('glyph-view', {});
+    const node = new GlyphisNode('glyphis-view', {});
     const handler = mock(() => {});
     node.props.onPressOut = handler;
 
@@ -193,8 +193,8 @@ describe('dispatchNodeEvent', () => {
   });
 
   it('skips nodes without handlers', () => {
-    const parent = new GlyphNode('glyph-view', {});
-    const child = new GlyphNode('glyph-view', {});
+    const parent = new GlyphisNode('glyphis-view', {});
+    const child = new GlyphisNode('glyphis-view', {});
     parent.appendChild(child);
 
     const parentHandler = mock(() => {});
@@ -210,11 +210,11 @@ describe('dispatchNodeEvent', () => {
 
 describe('NodeEventManager', () => {
   function setupManager() {
-    const root = new GlyphNode(HOST_TYPES.ROOT, {});
-    const button = new GlyphNode('glyph-view', {});
+    const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+    const button = new GlyphisNode('glyphis-view', {});
     root.appendChild(button);
 
-    const layoutMap = new Map<GlyphNode, LayoutOutput>();
+    const layoutMap = new Map<GlyphisNode, LayoutOutput>();
     layoutMap.set(root, createLayout(0, 0, 400, 400));
     layoutMap.set(button, createLayout(10, 10, 100, 50));
 

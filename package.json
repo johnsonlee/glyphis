@@ -1,14 +1,11 @@
 {
-  "name": "glyph",
+  "name": "glyphis",
   "version": "0.1.0",
   "description": "A cross-platform mobile app framework with near-native performance",
   "type": "module",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./components": "./src/components/index.ts",
-    "./jsx-runtime": "./src/jsx-runtime.ts",
-    "./jsx-dev-runtime": "./src/jsx-runtime.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "test": "bun test --coverage",
@@ -16,15 +13,12 @@
     "build": "bun build src/index.ts --outdir dist --target browser"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/react": "^19.2.14"
+    "@types/bun": "latest"
   },
   "dependencies": {
-    "@vue/runtime-core": "^3.5.32",
-    "canvaskit-wasm": "^0.41.0",
+    "jsc-android": "^250231.0.0",
     "puppeteer": "^24.40.0",
-    "react": "^19.2.4",
-    "react-reconciler": "^0.33.0",
-    "yoga-wasm-web": "^0.3.3"
+    "solid-js": "^1.9.12",
+    "yoga-layout": "^3.2.1"
   }
 }

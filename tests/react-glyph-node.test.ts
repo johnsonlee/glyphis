@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'bun:test';
-import { GlyphNode, HOST_TYPES } from '../src/react/glyph-node';
+import { GlyphisNode, HOST_TYPES } from '../src/react/glyphis-node';
 
-describe('GlyphNode', () => {
+describe('GlyphisNode', () => {
   describe('constructor', () => {
     it('creates node with correct type, props, and empty children', () => {
-      const node = new GlyphNode('glyph-view', { style: { flex: 1 } });
-      expect(node.type).toBe('glyph-view');
+      const node = new GlyphisNode('glyphis-view', { style: { flex: 1 } });
+      expect(node.type).toBe('glyphis-view');
       expect(node.props).toEqual({ style: { flex: 1 } });
       expect(node.children).toEqual([]);
       expect(node.parent).toBeNull();
@@ -13,31 +13,31 @@ describe('GlyphNode', () => {
     });
 
     it('creates text leaf node with text content', () => {
-      const node = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello');
-      expect(node.type).toBe('glyph-text-leaf');
+      const node = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'Hello');
+      expect(node.type).toBe('glyphis-text-leaf');
       expect(node.text).toBe('Hello');
       expect(node.children).toEqual([]);
     });
 
     it('defaults text to null when not provided', () => {
-      const node = new GlyphNode('glyph-view', {});
+      const node = new GlyphisNode('glyphis-view', {});
       expect(node.text).toBeNull();
     });
   });
 
   describe('appendChild', () => {
     it('adds child and sets parent', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const child = new GlyphNode('glyph-view', {});
+      const parent = new GlyphisNode('glyphis-view', {});
+      const child = new GlyphisNode('glyphis-view', {});
       parent.appendChild(child);
       expect(parent.children).toEqual([child]);
       expect(child.parent).toBe(parent);
     });
 
     it('removes child from previous parent first', () => {
-      const oldParent = new GlyphNode('glyph-view', {});
-      const newParent = new GlyphNode('glyph-view', {});
-      const child = new GlyphNode('glyph-view', {});
+      const oldParent = new GlyphisNode('glyphis-view', {});
+      const newParent = new GlyphisNode('glyphis-view', {});
+      const child = new GlyphisNode('glyphis-view', {});
 
       oldParent.appendChild(child);
       expect(oldParent.children.length).toBe(1);
@@ -49,10 +49,10 @@ describe('GlyphNode', () => {
     });
 
     it('maintains order of multiple children', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const a = new GlyphNode('glyph-view', { testID: 'a' });
-      const b = new GlyphNode('glyph-view', { testID: 'b' });
-      const c = new GlyphNode('glyph-view', { testID: 'c' });
+      const parent = new GlyphisNode('glyphis-view', {});
+      const a = new GlyphisNode('glyphis-view', { testID: 'a' });
+      const b = new GlyphisNode('glyphis-view', { testID: 'b' });
+      const c = new GlyphisNode('glyphis-view', { testID: 'c' });
 
       parent.appendChild(a);
       parent.appendChild(b);
@@ -64,8 +64,8 @@ describe('GlyphNode', () => {
 
   describe('removeChild', () => {
     it('removes child and clears parent', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const child = new GlyphNode('glyph-view', {});
+      const parent = new GlyphisNode('glyphis-view', {});
+      const child = new GlyphisNode('glyphis-view', {});
       parent.appendChild(child);
       parent.removeChild(child);
       expect(parent.children).toEqual([]);
@@ -73,18 +73,18 @@ describe('GlyphNode', () => {
     });
 
     it('is no-op for non-existent child', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const other = new GlyphNode('glyph-view', {});
+      const parent = new GlyphisNode('glyphis-view', {});
+      const other = new GlyphisNode('glyphis-view', {});
       parent.removeChild(other);
       expect(parent.children).toEqual([]);
       expect(other.parent).toBeNull();
     });
 
     it('preserves other children when removing one', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const a = new GlyphNode('glyph-view', {});
-      const b = new GlyphNode('glyph-view', {});
-      const c = new GlyphNode('glyph-view', {});
+      const parent = new GlyphisNode('glyphis-view', {});
+      const a = new GlyphisNode('glyphis-view', {});
+      const b = new GlyphisNode('glyphis-view', {});
+      const c = new GlyphisNode('glyphis-view', {});
       parent.appendChild(a);
       parent.appendChild(b);
       parent.appendChild(c);
@@ -96,10 +96,10 @@ describe('GlyphNode', () => {
 
   describe('insertBefore', () => {
     it('inserts child at correct position', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const a = new GlyphNode('glyph-view', { testID: 'a' });
-      const b = new GlyphNode('glyph-view', { testID: 'b' });
-      const c = new GlyphNode('glyph-view', { testID: 'c' });
+      const parent = new GlyphisNode('glyphis-view', {});
+      const a = new GlyphisNode('glyphis-view', { testID: 'a' });
+      const b = new GlyphisNode('glyphis-view', { testID: 'b' });
+      const c = new GlyphisNode('glyphis-view', { testID: 'c' });
 
       parent.appendChild(a);
       parent.appendChild(c);
@@ -110,10 +110,10 @@ describe('GlyphNode', () => {
     });
 
     it('appends when anchor is not found', () => {
-      const parent = new GlyphNode('glyph-view', {});
-      const a = new GlyphNode('glyph-view', {});
-      const b = new GlyphNode('glyph-view', {});
-      const notChild = new GlyphNode('glyph-view', {});
+      const parent = new GlyphisNode('glyphis-view', {});
+      const a = new GlyphisNode('glyphis-view', {});
+      const b = new GlyphisNode('glyphis-view', {});
+      const notChild = new GlyphisNode('glyphis-view', {});
 
       parent.appendChild(a);
       parent.insertBefore(b, notChild);
@@ -123,10 +123,10 @@ describe('GlyphNode', () => {
     });
 
     it('removes from previous parent before inserting', () => {
-      const oldParent = new GlyphNode('glyph-view', {});
-      const newParent = new GlyphNode('glyph-view', {});
-      const anchor = new GlyphNode('glyph-view', {});
-      const child = new GlyphNode('glyph-view', {});
+      const oldParent = new GlyphisNode('glyphis-view', {});
+      const newParent = new GlyphisNode('glyphis-view', {});
+      const anchor = new GlyphisNode('glyphis-view', {});
+      const child = new GlyphisNode('glyphis-view', {});
 
       oldParent.appendChild(child);
       newParent.appendChild(anchor);
@@ -139,7 +139,7 @@ describe('GlyphNode', () => {
 
   describe('updateProps', () => {
     it('replaces props entirely', () => {
-      const node = new GlyphNode('glyph-view', { style: { flex: 1 } });
+      const node = new GlyphisNode('glyphis-view', { style: { flex: 1 } });
       node.updateProps({ style: { flex: 2 }, testID: 'updated' });
       expect(node.props).toEqual({ style: { flex: 2 }, testID: 'updated' });
     });
@@ -147,7 +147,7 @@ describe('GlyphNode', () => {
 
   describe('updateText', () => {
     it('updates text content', () => {
-      const node = new GlyphNode(HOST_TYPES.TEXT_LEAF, {}, 'old');
+      const node = new GlyphisNode(HOST_TYPES.TEXT_LEAF, {}, 'old');
       node.updateText('new');
       expect(node.text).toBe('new');
     });
@@ -155,9 +155,9 @@ describe('GlyphNode', () => {
 
   describe('deep tree', () => {
     it('maintains correct parent pointers in three-level tree', () => {
-      const root = new GlyphNode(HOST_TYPES.ROOT, {});
-      const child = new GlyphNode('glyph-view', {});
-      const grandchild = new GlyphNode('glyph-text', {});
+      const root = new GlyphisNode(HOST_TYPES.ROOT, {});
+      const child = new GlyphisNode('glyphis-view', {});
+      const grandchild = new GlyphisNode('glyphis-text', {});
 
       root.appendChild(child);
       child.appendChild(grandchild);
@@ -171,12 +171,12 @@ describe('GlyphNode', () => {
 
 describe('HOST_TYPES', () => {
   it('has expected type constants', () => {
-    expect(HOST_TYPES.VIEW).toBe('glyph-view');
-    expect(HOST_TYPES.TEXT).toBe('glyph-text');
-    expect(HOST_TYPES.TEXT_LEAF).toBe('glyph-text-leaf');
-    expect(HOST_TYPES.IMAGE).toBe('glyph-image');
-    expect(HOST_TYPES.SCROLL_VIEW).toBe('glyph-scroll-view');
-    expect(HOST_TYPES.TEXT_INPUT).toBe('glyph-text-input');
-    expect(HOST_TYPES.ROOT).toBe('glyph-root');
+    expect(HOST_TYPES.VIEW).toBe('glyphis-view');
+    expect(HOST_TYPES.TEXT).toBe('glyphis-text');
+    expect(HOST_TYPES.TEXT_LEAF).toBe('glyphis-text-leaf');
+    expect(HOST_TYPES.IMAGE).toBe('glyphis-image');
+    expect(HOST_TYPES.SCROLL_VIEW).toBe('glyphis-scroll-view');
+    expect(HOST_TYPES.TEXT_INPUT).toBe('glyphis-text-input');
+    expect(HOST_TYPES.ROOT).toBe('glyphis-root');
   });
 });

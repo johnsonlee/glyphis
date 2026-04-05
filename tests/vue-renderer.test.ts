@@ -1,27 +1,27 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { defineComponent, h, ref, computed, nextTick } from '@vue/runtime-core';
-import { createApp, GlyphNode, HOST_TYPES } from '../src/vue/renderer';
+import { createApp, GlyphisNode, HOST_TYPES } from '../src/vue/renderer';
 
-function renderToTree(component: any): Promise<GlyphNode> {
-  const root = new GlyphNode(HOST_TYPES.ROOT, {});
+function renderToTree(component: any): Promise<GlyphisNode> {
+  const root = new GlyphisNode(HOST_TYPES.ROOT, {});
   const app = createApp(component);
   app.mount(root as any);
   return new Promise(resolve => setTimeout(() => resolve(root), 50));
 }
 
-function collectNodes(node: GlyphNode): GlyphNode[] {
-  const result: GlyphNode[] = [node];
+function collectNodes(node: GlyphisNode): GlyphisNode[] {
+  const result: GlyphisNode[] = [node];
   for (const child of node.children) {
     result.push(...collectNodes(child));
   }
   return result;
 }
 
-function findByType(root: GlyphNode, type: string): GlyphNode[] {
+function findByType(root: GlyphisNode, type: string): GlyphisNode[] {
   return collectNodes(root).filter(n => n.type === type);
 }
 
-function findTextLeaves(root: GlyphNode): string[] {
+function findTextLeaves(root: GlyphisNode): string[] {
   return collectNodes(root)
     .filter(n => n.type === HOST_TYPES.TEXT_LEAF && n.text)
     .map(n => n.text!);
@@ -31,7 +31,7 @@ describe('Vue renderer integration', () => {
   it('createApp creates Vue app', () => {
     const component = defineComponent({
       setup() {
-        return () => h('glyph-view', {});
+        return () => h('glyphis-view', {});
       },
     });
     const app = createApp(component);
@@ -39,54 +39,54 @@ describe('Vue renderer integration', () => {
     expect(app.mount).toBeInstanceOf(Function);
   });
 
-  it('renders simple component to GlyphNode tree', async () => {
+  it('renders simple component to GlyphisNode tree', async () => {
     const component = defineComponent({
       setup() {
-        return () => h('glyph-view', { style: { flex: 1 } });
+        return () => h('glyphis-view', { style: { flex: 1 } });
       },
     });
 
     const root = await renderToTree(component);
     expect(root.children.length).toBe(1);
-    expect(root.children[0].type).toBe('glyph-view');
+    expect(root.children[0].type).toBe('glyphis-view');
     expect(root.children[0].props.style).toEqual({ flex: 1 });
   });
 
   it('renders nested components', async () => {
     const Inner = defineComponent({
       setup() {
-        return () => h('glyph-text', { style: { fontSize: 16 } }, 'inner');
+        return () => h('glyphis-text', { style: { fontSize: 16 } }, 'inner');
       },
     });
 
     const Outer = defineComponent({
       setup() {
-        return () => h('glyph-view', { style: { flex: 1 } }, [
+        return () => h('glyphis-view', { style: { flex: 1 } }, [
           h(Inner),
-          h('glyph-view', { style: { flex: 2 } }),
+          h('glyphis-view', { style: { flex: 2 } }),
         ]);
       },
     });
 
     const root = await renderToTree(Outer);
     const outerView = root.children[0];
-    expect(outerView.type).toBe('glyph-view');
-    // Inner component renders a glyph-text, plus there's a glyph-view sibling
+    expect(outerView.type).toBe('glyphis-view');
+    // Inner component renders a glyphis-text, plus there's a glyphis-view sibling
     expect(outerView.children.length).toBe(2);
-    expect(outerView.children[0].type).toBe('glyph-text');
-    expect(outerView.children[1].type).toBe('glyph-view');
+    expect(outerView.children[0].type).toBe('glyphis-text');
+    expect(outerView.children[1].type).toBe('glyphis-view');
   });
 
   it('renders text children as text leaf nodes', async () => {
     const component = defineComponent({
       setup() {
-        return () => h('glyph-text', { style: { fontSize: 14 } }, 'Hello Vue');
+        return () => h('glyphis-text', { style: { fontSize: 14 } }, 'Hello Vue');
       },
     });
 
     const root = await renderToTree(component);
     const textNode = root.children[0];
-    expect(textNode.type).toBe('glyph-text');
+    expect(textNode.type).toBe('glyphis-text');
     expect(textNode.children.length).toBe(1);
     expect(textNode.children[0].type).toBe(HOST_TYPES.TEXT_LEAF);
     expect(textNode.children[0].text).toBe('Hello Vue');
@@ -99,7 +99,7 @@ describe('Vue renderer integration', () => {
       setup() {
         const count = ref(0);
         setCount = (v: number) => { count.value = v; };
-        return () => h('glyph-text', {}, String(count.value));
+        return () => h('glyphis-text', {}, String(count.value));
       },
     });
 
@@ -120,7 +120,7 @@ describe('Vue renderer integration', () => {
         const count = ref(2);
         const doubled = computed(() => count.value * 2);
         setCount = (v: number) => { count.value = v; };
-        return () => h('glyph-text', {}, String(doubled.value));
+        return () => h('glyphis-text', {}, String(doubled.value));
       },
     });
 
@@ -133,17 +133,17 @@ describe('Vue renderer integration', () => {
     expect(findTextLeaves(root)).toContain('20');
   });
 
-  it('event handlers are set on GlyphNode props', async () => {
+  it('event handlers are set on GlyphisNode props', async () => {
     const handler = mock(() => {});
 
     const component = defineComponent({
       setup() {
-        return () => h('glyph-view', { onPress: handler });
+        return () => h('glyphis-view', { onPress: handler });
       },
     });
 
     const root = await renderToTree(component);
-    const view = findByType(root, 'glyph-view')[0];
+    const view = findByType(root, 'glyphis-view')[0];
     expect(view.props.onPress).toBe(handler);
   });
 
@@ -154,8 +154,8 @@ describe('Vue renderer integration', () => {
       setup() {
         const show = ref(true);
         setShow = (v: boolean) => { show.value = v; };
-        return () => h('glyph-view', {}, [
-          show.value ? h('glyph-text', {}, 'visible') : null,
+        return () => h('glyphis-view', {}, [
+          show.value ? h('glyphis-text', {}, 'visible') : null,
         ]);
       },
     });
@@ -176,8 +176,8 @@ describe('Vue renderer integration', () => {
       setup() {
         const items = ref(['A', 'B', 'C']);
         setItems = (v: string[]) => { items.value = v; };
-        return () => h('glyph-view', {},
-          items.value.map(item => h('glyph-text', { key: item }, item)),
+        return () => h('glyphis-view', {},
+          items.value.map(item => h('glyphis-text', { key: item }, item)),
         );
       },
     });

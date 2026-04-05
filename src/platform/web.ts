@@ -1,174 +1,151 @@
-import type { VNode, Fiber, Style, Renderer } from '../types';
-import { createReconciler } from '../reconciler';
-import type { ReconcilerHost } from '../reconciler';
-import { CanvasRenderer } from '../canvas-renderer';
-import { EventManager } from '../events';
-import { computeLayout } from '../layout';
-import type { LayoutInput, LayoutOutput } from '../layout';
-import { generateRenderCommands, setDebugMode } from '../render-tree';
+import type { Platform, RenderCommand, InputEvent } from '../types';
 
-export function render(element: VNode, container: HTMLCanvasElement): void {
-  const renderer = new CanvasRenderer(container);
-  const eventManager = new EventManager();
+export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
+  const ctx = canvas.getContext('2d')!;
+  const dpr = window.devicePixelRatio || 1;
 
-  let rootFiber: Fiber | null = null;
-  let needsRender = false;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
 
-  const host: ReconcilerHost = {
-    createNode(_fiber: Fiber) {
-      return {};
+  let inputCallback: ((event: InputEvent) => void) | null = null;
+
+  function canvasCoords(e: PointerEvent): { x: number; y: number } {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    inputCallback?.({ type: 'pointerdown', ...canvasCoords(e) });
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    inputCallback?.({ type: 'pointerup', ...canvasCoords(e) });
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    inputCallback?.({ type: 'pointermove', ...canvasCoords(e) });
+  });
+
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d')!;
+
+  return {
+    measureText(text: string, fontSize: number, fontFamily?: string, fontWeight?: string): { width: number; height: number } {
+      const family = fontFamily || 'system-ui, -apple-system, sans-serif';
+      const weight = fontWeight || '400';
+      measureCtx.font = `${weight} ${fontSize}px ${family}`;
+      const metrics = measureCtx.measureText(text);
+      const height = fontSize * 1.2;
+      return { width: metrics.width, height };
     },
-    updateNode(_fiber: Fiber, _prevProps: any, _nextProps: any) {
-      scheduleRender();
+
+    render(commands: RenderCommand[]): void {
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const cmd of commands) {
+        switch (cmd.type) {
+          case 'rect':
+            drawRect(ctx, cmd);
+            break;
+          case 'text':
+            drawText(ctx, cmd);
+            break;
+          case 'border':
+            drawBorder(ctx, cmd);
+            break;
+          case 'clip-start':
+            ctx.save();
+            clipRegion(ctx, cmd);
+            break;
+          case 'clip-end':
+            ctx.restore();
+            break;
+        }
+      }
     },
-    removeNode(_fiber: Fiber) {
-      scheduleRender();
+
+    getViewport(): { width: number; height: number } {
+      return { width: rect.width, height: rect.height };
     },
-    commitEffects(fiber: Fiber) {
-      rootFiber = findRoot(fiber);
-      scheduleRender();
+
+    onInput(callback: (event: InputEvent) => void): void {
+      inputCallback = callback;
     },
   };
-
-  const reconciler = createReconciler(host);
-
-  function findRoot(fiber: Fiber): Fiber {
-    let current = fiber;
-    while (current.parent) {
-      current = current.parent;
-    }
-    return current;
-  }
-
-  function scheduleRender() {
-    if (!needsRender) {
-      needsRender = true;
-      requestAnimationFrame(performRender);
-    }
-  }
-
-  function performRender() {
-    needsRender = false;
-    if (!rootFiber) return;
-
-    const layoutInput = fiberToLayoutInput(rootFiber, renderer);
-    // Root fills the entire canvas viewport
-    layoutInput.style = { ...layoutInput.style, width: renderer.getWidth(), height: renderer.getHeight() };
-    const layoutOutput = computeLayout(layoutInput, renderer.getWidth(), renderer.getHeight());
-    const layoutMap = buildLayoutMap(rootFiber, layoutOutput);
-    const commands = generateRenderCommands(rootFiber, layoutMap);
-
-    renderer.clear();
-    renderer.render(commands);
-
-    eventManager.setRoot(rootFiber, layoutMap);
-  }
-
-  // Check for debug mode via URL query parameter
-  if (typeof window !== 'undefined') {
-    if (window.location) {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('debug') === 'true') {
-        setDebugMode(true);
-      }
-    }
-    // Support toggling via global function
-    (window as any).__GLYPH_DEBUG__ = (enabled: boolean) => {
-      setDebugMode(enabled);
-      scheduleRender();
-    };
-  }
-
-  const detach = eventManager.attach(container);
-
-  reconciler.render(element, container);
 }
 
-function collectLayoutChildren(fiber: Fiber, renderer: Renderer): LayoutInput[] {
-  const result: LayoutInput[] = [];
-  let child = fiber.child;
-  while (child) {
-    if (child.tag !== 'component' && child.tag !== 'fragment') {
-      result.push(fiberToLayoutInput(child, renderer));
-    } else {
-      // Recursively unwrap component/fragment chains
-      result.push(...collectLayoutChildren(child, renderer));
-    }
-    child = child.sibling;
+function drawRect(ctx: CanvasRenderingContext2D, cmd: Extract<RenderCommand, { type: 'rect' }>): void {
+  ctx.save();
+  if (cmd.opacity !== undefined) ctx.globalAlpha = cmd.opacity;
+  ctx.fillStyle = cmd.color;
+  if (cmd.borderRadius) {
+    roundRect(ctx, cmd.x, cmd.y, cmd.width, cmd.height, cmd.borderRadius);
+    ctx.fill();
+  } else {
+    ctx.fillRect(cmd.x, cmd.y, cmd.width, cmd.height);
   }
-  return result;
+  ctx.restore();
 }
 
-export function fiberToLayoutInput(fiber: Fiber, renderer: Renderer): LayoutInput {
-  const style: Style = fiber.props.style || {};
-  const children = collectLayoutChildren(fiber, renderer);
+function drawText(ctx: CanvasRenderingContext2D, cmd: Extract<RenderCommand, { type: 'text' }>): void {
+  ctx.save();
+  if (cmd.opacity !== undefined) ctx.globalAlpha = cmd.opacity;
+  const family = cmd.fontFamily || 'system-ui, -apple-system, sans-serif';
+  const weight = cmd.fontWeight || '400';
+  ctx.font = `${weight} ${cmd.fontSize}px ${family}`;
+  ctx.fillStyle = cmd.color;
+  ctx.textBaseline = 'top';
 
-  const input: LayoutInput = { style, children };
-
-  if (fiber.tag === 'text') {
-    const text = String(fiber.props.nodeValue || '');
-    if (text) {
-      const parentStyle = fiber.parent?.props.style || {};
-      input.text = text;
-      input.measureText = (t: string, s: Style) => {
-        return renderer.measureText(
-          t,
-          s.fontSize || parentStyle.fontSize || style.fontSize || 14,
-          s.fontFamily || parentStyle.fontFamily || style.fontFamily || 'system-ui',
-          String(s.fontWeight || parentStyle.fontWeight || style.fontWeight || 'normal'),
-        );
-      };
-    }
-  } else if (fiber.props.children) {
-    const textParts = fiber.props.children.filter(
-      (c: any) => typeof c === 'string' || typeof c === 'number',
-    );
-    if (textParts.length > 0) {
-      const text = textParts.join('');
-      input.text = text;
-      input.measureText = (t: string, s: Style) => {
-        return renderer.measureText(
-          t,
-          s.fontSize || style.fontSize || 14,
-          s.fontFamily || style.fontFamily || 'system-ui',
-          String(s.fontWeight || style.fontWeight || 'normal'),
-        );
-      };
-    }
+  let x = cmd.x;
+  if (cmd.textAlign === 'center' && cmd.maxWidth) {
+    x = cmd.x + cmd.maxWidth / 2;
+    ctx.textAlign = 'center';
+  } else if (cmd.textAlign === 'right' && cmd.maxWidth) {
+    x = cmd.x + cmd.maxWidth;
+    ctx.textAlign = 'right';
+  } else {
+    ctx.textAlign = 'left';
   }
 
-  return input;
+  ctx.fillText(cmd.text, x, cmd.y);
+  ctx.restore();
 }
 
-export function buildLayoutMap(fiber: Fiber, layout: LayoutOutput): Map<Fiber, LayoutOutput> {
-  const map = new Map<Fiber, LayoutOutput>();
-  mapFiberToLayout(fiber, layout, map);
-  return map;
-}
-
-function collectHostFibers(fiber: Fiber): Fiber[] {
-  const result: Fiber[] = [];
-  let child = fiber.child;
-  while (child) {
-    if (child.tag !== 'component' && child.tag !== 'fragment') {
-      result.push(child);
-    } else {
-      result.push(...collectHostFibers(child));
-    }
-    child = child.sibling;
+function drawBorder(ctx: CanvasRenderingContext2D, cmd: Extract<RenderCommand, { type: 'border' }>): void {
+  ctx.save();
+  if (cmd.opacity !== undefined) ctx.globalAlpha = cmd.opacity;
+  ctx.strokeStyle = cmd.color;
+  const avgWidth = (cmd.widths[0] + cmd.widths[1] + cmd.widths[2] + cmd.widths[3]) / 4;
+  ctx.lineWidth = avgWidth;
+  const half = avgWidth / 2;
+  if (cmd.borderRadius) {
+    roundRect(ctx, cmd.x + half, cmd.y + half, cmd.width - avgWidth, cmd.height - avgWidth, cmd.borderRadius);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(cmd.x + half, cmd.y + half, cmd.width - avgWidth, cmd.height - avgWidth);
   }
-  return result;
+  ctx.restore();
 }
 
-function mapFiberToLayout(
-  fiber: Fiber,
-  layout: LayoutOutput,
-  map: Map<Fiber, LayoutOutput>,
-): void {
-  map.set(fiber, layout);
-
-  const hostChildren = collectHostFibers(fiber);
-  for (let i = 0; i < hostChildren.length && i < layout.children.length; i++) {
-    mapFiberToLayout(hostChildren[i], layout.children[i], map);
+function clipRegion(ctx: CanvasRenderingContext2D, cmd: Extract<RenderCommand, { type: 'clip-start' }>): void {
+  ctx.beginPath();
+  if (cmd.borderRadius) {
+    roundRect(ctx, cmd.x, cmd.y, cmd.width, cmd.height, cmd.borderRadius);
+  } else {
+    ctx.rect(cmd.x, cmd.y, cmd.width, cmd.height);
   }
+  ctx.clip();
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }

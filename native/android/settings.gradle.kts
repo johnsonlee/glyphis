@@ -12,8 +12,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            url = uri("${rootProject.projectDir}/../../node_modules/jsc-android/dist")
+        }
     }
 }
 
-rootProject.name = "GlyphShell"
+rootProject.name = "GlyphisShell"
 include(":app")

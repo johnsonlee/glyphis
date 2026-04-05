@@ -1,57 +1,57 @@
 import { describe, it, expect, mock } from 'bun:test';
 import React, { useState, useEffect, useRef, useContext, createContext, useMemo, useCallback } from 'react';
-import { renderReact, GlyphNode, HOST_TYPES } from '../src/react/renderer';
+import { renderReact, GlyphisNode, HOST_TYPES } from '../src/react/renderer';
 
-function renderToTree(element: React.ReactElement, onCommit?: () => void): Promise<GlyphNode> {
-  const rootNode = new GlyphNode(HOST_TYPES.ROOT, {});
+function renderToTree(element: React.ReactElement, onCommit?: () => void): Promise<GlyphisNode> {
+  const rootNode = new GlyphisNode(HOST_TYPES.ROOT, {});
   renderReact(element, rootNode, onCommit ?? (() => {}));
   return new Promise(resolve => setTimeout(() => resolve(rootNode), 100));
 }
 
-function collectNodes(node: GlyphNode): GlyphNode[] {
-  const result: GlyphNode[] = [node];
+function collectNodes(node: GlyphisNode): GlyphisNode[] {
+  const result: GlyphisNode[] = [node];
   for (const child of node.children) {
     result.push(...collectNodes(child));
   }
   return result;
 }
 
-function findByType(root: GlyphNode, type: string): GlyphNode[] {
+function findByType(root: GlyphisNode, type: string): GlyphisNode[] {
   return collectNodes(root).filter(n => n.type === type);
 }
 
-function findTextLeaves(root: GlyphNode): string[] {
+function findTextLeaves(root: GlyphisNode): string[] {
   return collectNodes(root)
     .filter(n => n.type === HOST_TYPES.TEXT_LEAF && n.text)
     .map(n => n.text!);
 }
 
 describe('React renderer integration', () => {
-  it('renders a simple element to GlyphNode tree', async () => {
-    const el = React.createElement('glyph-view', { style: { flex: 1 } });
+  it('renders a simple element to GlyphisNode tree', async () => {
+    const el = React.createElement('glyphis-view', { style: { flex: 1 } });
     const root = await renderToTree(el);
     expect(root.children.length).toBe(1);
-    expect(root.children[0].type).toBe('glyph-view');
+    expect(root.children[0].type).toBe('glyphis-view');
     expect(root.children[0].props.style).toEqual({ flex: 1 });
   });
 
   it('renders nested elements with correct tree structure', async () => {
-    const el = React.createElement('glyph-view', { style: { flex: 1 } },
-      React.createElement('glyph-text', { style: { fontSize: 16 } }),
-      React.createElement('glyph-view', { style: { flex: 2 } }),
+    const el = React.createElement('glyphis-view', { style: { flex: 1 } },
+      React.createElement('glyphis-text', { style: { fontSize: 16 } }),
+      React.createElement('glyphis-view', { style: { flex: 2 } }),
     );
     const root = await renderToTree(el);
     const outer = root.children[0];
     expect(outer.children.length).toBe(2);
-    expect(outer.children[0].type).toBe('glyph-text');
-    expect(outer.children[1].type).toBe('glyph-view');
+    expect(outer.children[0].type).toBe('glyphis-text');
+    expect(outer.children[1].type).toBe('glyphis-view');
   });
 
   it('renders text children as text leaf nodes', async () => {
-    const el = React.createElement('glyph-text', { style: { fontSize: 14 } }, 'Hello');
+    const el = React.createElement('glyphis-text', { style: { fontSize: 14 } }, 'Hello');
     const root = await renderToTree(el);
     const textNode = root.children[0];
-    expect(textNode.type).toBe('glyph-text');
+    expect(textNode.type).toBe('glyphis-text');
     expect(textNode.children.length).toBe(1);
     expect(textNode.children[0].type).toBe(HOST_TYPES.TEXT_LEAF);
     expect(textNode.children[0].text).toBe('Hello');
@@ -63,7 +63,7 @@ describe('React renderer integration', () => {
     function Counter() {
       const [count, setCount] = useState(0);
       setVal = setCount;
-      return React.createElement('glyph-text', {}, String(count));
+      return React.createElement('glyphis-text', {}, String(count));
     }
 
     const root = await renderToTree(React.createElement(Counter));
@@ -81,7 +81,7 @@ describe('React renderer integration', () => {
       useEffect(() => {
         effectFn();
       }, []);
-      return React.createElement('glyph-view', {});
+      return React.createElement('glyphis-view', {});
     }
 
     await renderToTree(React.createElement(EffectComponent));
@@ -102,7 +102,7 @@ describe('React renderer integration', () => {
       }
       refValues.push(ref.current);
 
-      return React.createElement('glyph-text', {}, String(count));
+      return React.createElement('glyphis-text', {}, String(count));
     }
 
     await renderToTree(React.createElement(RefComponent));
@@ -119,7 +119,7 @@ describe('React renderer integration', () => {
 
     function Consumer() {
       received = useContext(MyContext);
-      return React.createElement('glyph-view', {});
+      return React.createElement('glyphis-view', {});
     }
 
     const el = React.createElement(MyContext.Provider, { value: 'provided' },
@@ -142,7 +142,7 @@ describe('React renderer integration', () => {
         return 'computed';
       }, []);
 
-      return React.createElement('glyph-text', {}, String(count));
+      return React.createElement('glyphis-text', {}, String(count));
     }
 
     await renderToTree(React.createElement(MemoComponent));
@@ -164,7 +164,7 @@ describe('React renderer integration', () => {
       const cb = useCallback(() => {}, []);
       callbacks.push(cb);
 
-      return React.createElement('glyph-text', {}, String(count));
+      return React.createElement('glyphis-text', {}, String(count));
     }
 
     await renderToTree(React.createElement(CallbackComponent));
@@ -177,10 +177,10 @@ describe('React renderer integration', () => {
 
   it('conditional rendering skips null children', async () => {
     function Conditional() {
-      return React.createElement('glyph-view', {},
-        React.createElement('glyph-text', {}, 'visible'),
+      return React.createElement('glyphis-view', {},
+        React.createElement('glyphis-text', {}, 'visible'),
         null,
-        React.createElement('glyph-text', {}, 'also visible'),
+        React.createElement('glyphis-text', {}, 'also visible'),
       );
     }
 
@@ -197,9 +197,9 @@ describe('React renderer integration', () => {
       const [items, setI] = useState(['A', 'B', 'C']);
       setItems = setI;
 
-      return React.createElement('glyph-view', {},
+      return React.createElement('glyphis-view', {},
         ...items.map(item =>
-          React.createElement('glyph-text', { key: item }, item),
+          React.createElement('glyphis-text', { key: item }, item),
         ),
       );
     }
@@ -219,8 +219,8 @@ describe('React renderer integration', () => {
       const [show, setS] = useState(true);
       setShow = setS;
 
-      return React.createElement('glyph-view', {},
-        show ? React.createElement('glyph-text', {}, 'child') : null,
+      return React.createElement('glyphis-view', {},
+        show ? React.createElement('glyphis-text', {}, 'child') : null,
       );
     }
 
@@ -239,7 +239,7 @@ describe('React renderer integration', () => {
     function Counter() {
       const [count, setCount] = useState(0);
       setVal = setCount;
-      return React.createElement('glyph-text', {}, String(count));
+      return React.createElement('glyphis-text', {}, String(count));
     }
 
     await renderToTree(React.createElement(Counter), onCommit);

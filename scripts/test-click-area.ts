@@ -20,7 +20,7 @@ async function main() {
 
   // Get canvas position on the page
   const canvasBox = await page.evaluate(() => {
-    const canvas = document.getElementById('glyph-root');
+    const canvas = document.getElementById('glyphis-root');
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };

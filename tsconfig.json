@@ -17,8 +17,8 @@
     "rootDir": "src",
     "types": ["bun-types"],
     "paths": {
-      "glyph": ["./src/index.ts"],
-      "glyph/*": ["./src/*"]
+      "glyphis": ["./src/index.ts"],
+      "glyphis/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
