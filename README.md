@@ -35,10 +35,11 @@ System JavaScriptCore on iOS/macOS has no WebAssembly support (Apple security po
 
 Two components exist today:
 
-- **`View`** -- Flexbox container. Props: `style`, `onPress`, `onPressIn`, `onPressOut`.
+- **`View`** -- Flexbox container. Props: `style`, `onPress`, `onPressIn`, `onPressOut`, `onPointerMove`.
 - **`Text`** -- Text display. Props: `style`, children (string).
+- **`RecyclerList`** -- Virtual list with node recycling. Only creates visible rows. Props: `data`, `renderItem`, `itemHeight`, `ref` (scroll handle).
 
-Components like Button, Image, ScrollView, TextInput, and FlatList do not exist yet.
+Components like Button, Image, ScrollView, and TextInput do not exist yet.
 
 ## Quick start
 
@@ -153,7 +154,6 @@ examples/
 - Text input (keyboard, IME, cursor, selection)
 - Scroll physics (momentum, rubber-banding)
 - GPU rendering (currently CPU 2D only)
-- View recycling / virtual lists
 
 ## Development
 

@@ -1,3 +1,4 @@
+import { createSignal } from 'solid-js';
 import type { GlyphisNode } from './node';
 import type { Style } from './types';
 import { glyphisRenderer } from './renderer';
@@ -47,4 +48,56 @@ export function Text(props: TextProps): GlyphisNode {
   glyphisRenderer.insert(node, () => props.children);
 
   return node;
+}
+
+interface ButtonProps {
+  title: string;
+  onPress: () => void;
+  color?: string;
+  textColor?: string;
+  disabled?: boolean;
+  style?: Style;
+}
+
+export function Button(props: ButtonProps): GlyphisNode {
+  var pressedSignal = createSignal(false);
+  var pressed = pressedSignal[0];
+  var setPressed = pressedSignal[1];
+
+  var textChild = glyphisRenderer.createComponent(Text, {
+    get style() {
+      return {
+        color: props.textColor || '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
+        textAlign: 'center' as const,
+      };
+    },
+    get children() { return props.title; },
+  });
+
+  return glyphisRenderer.createComponent(View, {
+    onPressIn: function() { if (!props.disabled) setPressed(true); },
+    onPressOut: function() { setPressed(false); },
+    onPress: function() { if (!props.disabled && props.onPress) props.onPress(); },
+    get style(): Style {
+      var base: Style = {
+        backgroundColor: props.color || '#2196F3',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 4,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        opacity: props.disabled ? 0.4 : (pressed() ? 0.6 : 1),
+      };
+      if (props.style) {
+        var keys = Object.keys(props.style);
+        for (var i = 0; i < keys.length; i++) {
+          (base as any)[keys[i]] = (props.style as any)[keys[i]];
+        }
+      }
+      return base;
+    },
+    children: textChild,
+  });
 }
