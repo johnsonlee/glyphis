@@ -1,5 +1,7 @@
 export { render, glyphisRenderer, scheduleRender } from './renderer';
 export { View, Text } from './components';
+export { RecyclerList } from './recycler-list';
+export type { RecyclerListProps, RecyclerListHandle } from './recycler-list';
 export { createWebPlatform } from './platform/web';
 export { createNativePlatform } from './platform/native';
 export { createSignal, createEffect, createMemo, createRoot, onMount, onCleanup, batch, untrack } from 'solid-js';

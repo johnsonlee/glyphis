@@ -40,19 +40,31 @@ function initNode(tag: string): GlyphisNode {
 
 function setupTextMeasure(node: GlyphisNode): void {
   if (!currentPlatform) return;
-  const platform = currentPlatform;
-  node.yoga.setMeasureFunc(() => {
-    const parentStyle = node.parent ? node.parent.style : {};
-    return platform.measureText(
+  const parentStyle = node.parent ? node.parent.style : {};
+  // On native: pass text + font to native for direct measurement (no JS callback)
+  if (typeof (node.yoga as any).enableMeasureNative === 'function') {
+    (node.yoga as any).enableMeasureNative(
       node.text,
       parentStyle.fontSize || 14,
-      parentStyle.fontFamily,
-      parentStyle.fontWeight,
+      parentStyle.fontFamily || '',
+      parentStyle.fontWeight || '',
     );
-  });
+  } else {
+    // Web: use JS measure callback (original behavior)
+    const platform = currentPlatform;
+    node.yoga.setMeasureFunc(() => {
+      const ps = node.parent ? node.parent.style : {};
+      return platform.measureText(
+        node.text,
+        ps.fontSize || 14,
+        ps.fontFamily,
+        ps.fontWeight,
+      );
+    });
+  }
 }
 
-const EVENT_PROPS = new Set(['onPress', 'onPressIn', 'onPressOut']);
+const EVENT_PROPS = new Set(['onPress', 'onPressIn', 'onPressOut', 'onPointerMove', 'onScrollDragStart', 'onScrollDragEnd']);
 
 export const glyphisRenderer = createRenderer<GlyphisNode>({
   createElement(tag: string): GlyphisNode {
@@ -68,6 +80,9 @@ export const glyphisRenderer = createRenderer<GlyphisNode>({
 
   replaceText(node: GlyphisNode, value: string): void {
     node.text = value;
+    if (typeof (node.yoga as any).updateMeasureText === 'function') {
+      (node.yoga as any).updateMeasureText(value);
+    }
     node.yoga.markDirty();
     scheduleRender();
   },

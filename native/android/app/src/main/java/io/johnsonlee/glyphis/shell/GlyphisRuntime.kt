@@ -9,6 +9,7 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 
+
 /**
  * JS runtime for the Glyphis framework on Android.
  *
@@ -72,17 +73,13 @@ class GlyphisRuntime(
     /** Called from JNI when JS invokes `__glyphis_native.submitRenderCommands(json)`. */
     @Suppress("unused") // called from native code
     fun onRenderCommands(json: String) {
-        try {
-            val array = JSONArray(json)
-            val commands = mutableListOf<JSONObject>()
-            for (i in 0 until array.length()) {
-                commands.add(array.getJSONObject(i))
-            }
-            handler.post {
-                renderView.setRenderCommands(commands)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing render commands", e)
+        val array = JSONArray(json)
+        val commands = mutableListOf<JSONObject>()
+        for (i in 0 until array.length()) {
+            commands.add(array.getJSONObject(i))
+        }
+        handler.post {
+            renderView.setRenderCommands(commands)
         }
     }
 

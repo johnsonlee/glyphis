@@ -1,19 +1,44 @@
 import JavaScriptCore
+import UIKit
 
-/// Holds the JSContext reference and node ID for measure function callbacks.
-/// Stored as the Yoga node context so the C measure function can reach back into JS.
+/// Holds text and font info for native text measurement during Yoga layout.
+/// Stored as the Yoga node context so the C measure function can measure text
+/// directly without calling back into JS.
 private class MeasureInfo {
     let context: JSContext
     let nodeId: Int
+    var text: String
+    var fontSize: CGFloat
+    var fontFamily: String
+    var fontWeight: String
 
-    init(context: JSContext, nodeId: Int) {
+    init(context: JSContext, nodeId: Int, text: String, fontSize: CGFloat, fontFamily: String, fontWeight: String) {
         self.context = context
         self.nodeId = nodeId
+        self.text = text
+        self.fontSize = fontSize
+        self.fontFamily = fontFamily
+        self.fontWeight = fontWeight
+    }
+}
+
+/// Maps a CSS font-weight string to UIFont.Weight.
+private func mapFontWeight(_ weight: String) -> UIFont.Weight {
+    switch weight {
+    case "bold", "700": return .bold
+    case "800": return .heavy
+    case "900": return .black
+    case "600": return .semibold
+    case "500": return .medium
+    case "300": return .light
+    case "200": return .thin
+    case "100": return .ultraLight
+    default: return .regular
     }
 }
 
 /// Top-level C-compatible measure function matching the YGMeasureFunc signature.
-/// Retrieves the MeasureInfo from the Yoga node context and calls into JS.
+/// Measures text directly using native APIs -- NO JS callback.
 private func yogaMeasureFunc(
     _ nodeRef: YGNodeConstRef?,
     _ width: Float,
@@ -27,13 +52,17 @@ private func yogaMeasureFunc(
         return YGSize(width: 0, height: 0)
     }
     let info = Unmanaged<MeasureInfo>.fromOpaque(ptr).takeUnretainedValue()
-    let script = "__yoga_measure(\(info.nodeId), \(width), \(widthMode.rawValue), \(height), \(heightMode.rawValue))"
-    NSLog("[Glyphis] measure called for node %d, evaluating: %@", info.nodeId, script)
-    let result = info.context.evaluateScript(script)
-    let w = Float(result?.objectForKeyedSubscript("width")?.toDouble() ?? 0)
-    let h = Float(result?.objectForKeyedSubscript("height")?.toDouble() ?? 0)
-    NSLog("[Glyphis] measure result: %.1f x %.1f", w, h)
-    return YGSize(width: w, height: h)
+
+    // Measure directly using native API
+    let weight = mapFontWeight(info.fontWeight)
+    let font: UIFont
+    if !info.fontFamily.isEmpty, let customFont = UIFont(name: info.fontFamily, size: info.fontSize) {
+        font = customFont
+    } else {
+        font = UIFont.systemFont(ofSize: info.fontSize, weight: weight)
+    }
+    let size = (info.text as NSString).size(withAttributes: [.font: font])
+    return YGSize(width: Float(ceil(size.width)), height: Float(ceil(size.height)))
 }
 
 /// Bridges the Yoga C layout API to JavaScript via JSContext.
@@ -72,6 +101,8 @@ class YogaBridge {
         registerNodeCalculateLayout(on: yoga)
         registerNodeMarkDirty(on: yoga)
         registerEnableMeasure(on: yoga)
+        registerEnableMeasureNative(on: yoga)
+        registerUpdateMeasureText(on: yoga)
 
         // -- Layout results --
 
@@ -96,6 +127,10 @@ class YogaBridge {
         // -- Style setters: gap --
 
         registerGapSetter(on: yoga)
+
+        // -- Batch style setter --
+
+        registerBatchStyleSetter(on: yoga)
 
         context.setObject(yoga, forKeyedSubscript: "__yoga" as NSString)
     }
@@ -188,8 +223,8 @@ class YogaBridge {
             // Clean up any previous measure info for this node
             self.cleanupMeasureInfo(for: nodeId, node: node)
 
-            // Create and retain a MeasureInfo, store its pointer as the node context
-            let info = MeasureInfo(context: self.context, nodeId: nodeId)
+            // Create and retain a MeasureInfo with empty text (backward compat)
+            let info = MeasureInfo(context: self.context, nodeId: nodeId, text: "", fontSize: 14, fontFamily: "", fontWeight: "")
             self.measureInfos[nodeId] = info
             let ptr = Unmanaged.passUnretained(info).toOpaque()
             YGNodeSetContext(node, ptr)
@@ -197,6 +232,39 @@ class YogaBridge {
             YGNodeSetMeasureFunc(node, yogaMeasureFunc)
         }
         yoga.setObject(enable, forKeyedSubscript: "enableMeasure" as NSString)
+    }
+
+    private func registerEnableMeasureNative(on yoga: JSValue) {
+        let enable: @convention(block) (Int, String, Double, String, String) -> Void = {
+            [weak self] nodeId, text, fontSize, fontFamily, fontWeight in
+            guard let self = self, let node = self.nodes[nodeId] else { return }
+
+            // Clean up any previous measure info for this node
+            self.cleanupMeasureInfo(for: nodeId, node: node)
+
+            // Create MeasureInfo with text + font data for native measurement
+            let info = MeasureInfo(
+                context: self.context, nodeId: nodeId,
+                text: text, fontSize: CGFloat(fontSize),
+                fontFamily: fontFamily, fontWeight: fontWeight
+            )
+            self.measureInfos[nodeId] = info
+            let ptr = Unmanaged.passUnretained(info).toOpaque()
+            YGNodeSetContext(node, ptr)
+
+            YGNodeSetMeasureFunc(node, yogaMeasureFunc)
+        }
+        yoga.setObject(enable, forKeyedSubscript: "enableMeasureNative" as NSString)
+    }
+
+    private func registerUpdateMeasureText(on yoga: JSValue) {
+        let update: @convention(block) (Int, String) -> Void = { [weak self] nodeId, text in
+            guard let self = self else { return }
+            if let info = self.measureInfos[nodeId] {
+                info.text = text
+            }
+        }
+        yoga.setObject(update, forKeyedSubscript: "updateMeasureText" as NSString)
     }
 
     private func cleanupMeasureInfo(for nodeId: Int, node: YGNodeRef) {
@@ -510,6 +578,115 @@ class YogaBridge {
             YGNodeStyleSetGap(node, YGGutter(rawValue: Int32(gutter))!, Float(value))
         }
         yoga.setObject(setGap, forKeyedSubscript: "nodeStyleSetGap" as NSString)
+    }
+
+    // MARK: - Batch Style Setter
+
+    private func registerBatchStyleSetter(on yoga: JSValue) {
+        let setBatch: @convention(block) (Int, String) -> Void = { [weak self] nodeId, jsonString in
+            guard let self = self, let node = self.nodes[nodeId] else { return }
+            guard let data = jsonString.data(using: .utf8),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return }
+
+            // Dimensions (number or "auto" or "N%")
+            if let v = dict["width"] { self.applyDimension(node, v, set: YGNodeStyleSetWidth, setPercent: YGNodeStyleSetWidthPercent, setAuto: YGNodeStyleSetWidthAuto) }
+            if let v = dict["height"] { self.applyDimension(node, v, set: YGNodeStyleSetHeight, setPercent: YGNodeStyleSetHeightPercent, setAuto: YGNodeStyleSetHeightAuto) }
+            if let v = dict["minWidth"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMinWidth, setPercent: YGNodeStyleSetMinWidthPercent) }
+            if let v = dict["minHeight"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMinHeight, setPercent: YGNodeStyleSetMinHeightPercent) }
+            if let v = dict["maxWidth"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMaxWidth, setPercent: YGNodeStyleSetMaxWidthPercent) }
+            if let v = dict["maxHeight"] { self.applyDimensionNoAuto(node, v, set: YGNodeStyleSetMaxHeight, setPercent: YGNodeStyleSetMaxHeightPercent) }
+
+            // Flex numeric
+            if let v = dict["flex"] as? Double { YGNodeStyleSetFlex(node, Float(v)) }
+            if let v = dict["flexGrow"] as? Double { YGNodeStyleSetFlexGrow(node, Float(v)) }
+            if let v = dict["flexShrink"] as? Double { YGNodeStyleSetFlexShrink(node, Float(v)) }
+            if let v = dict["flexBasis"] { self.applyDimension(node, v, set: YGNodeStyleSetFlexBasis, setPercent: YGNodeStyleSetFlexBasisPercent, setAuto: YGNodeStyleSetFlexBasisAuto) }
+
+            // Flex enums (already resolved to Int by JS)
+            if let v = dict["flexDirection"] as? Int { YGNodeStyleSetFlexDirection(node, YGFlexDirection(rawValue: Int32(v))!) }
+            if let v = dict["flexWrap"] as? Int { YGNodeStyleSetFlexWrap(node, YGWrap(rawValue: Int32(v))!) }
+
+            // Alignment enums
+            if let v = dict["justifyContent"] as? Int { YGNodeStyleSetJustifyContent(node, YGJustify(rawValue: Int32(v))!) }
+            if let v = dict["alignItems"] as? Int { YGNodeStyleSetAlignItems(node, YGAlign(rawValue: Int32(v))!) }
+            if let v = dict["alignSelf"] as? Int { YGNodeStyleSetAlignSelf(node, YGAlign(rawValue: Int32(v))!) }
+            if let v = dict["alignContent"] as? Int { YGNodeStyleSetAlignContent(node, YGAlign(rawValue: Int32(v))!) }
+
+            // Padding (keys: padding_<edge>)
+            for edge: Int32 in [0, 1, 2, 3, 6, 7, 8] {
+                if let v = dict["padding_\(edge)"] as? Double {
+                    YGNodeStyleSetPadding(node, YGEdge(rawValue: edge)!, Float(v))
+                }
+            }
+
+            // Margin (keys: margin_<edge>)
+            for edge: Int32 in [0, 1, 2, 3, 6, 7, 8] {
+                if let v = dict["margin_\(edge)"] as? Double {
+                    YGNodeStyleSetMargin(node, YGEdge(rawValue: edge)!, Float(v))
+                }
+            }
+
+            // Position type
+            if let v = dict["positionType"] as? Int { YGNodeStyleSetPositionType(node, YGPositionType(rawValue: Int32(v))!) }
+
+            // Position edges (keys: position_<edge>)
+            for edge: Int32 in [0, 1, 2, 3] {
+                if let v = dict["position_\(edge)"] as? Double {
+                    YGNodeStyleSetPosition(node, YGEdge(rawValue: edge)!, Float(v))
+                }
+            }
+
+            // Border (keys: border_<edge>)
+            for edge: Int32 in [0, 1, 2, 3, 8] {
+                if let v = dict["border_\(edge)"] as? Double {
+                    YGNodeStyleSetBorder(node, YGEdge(rawValue: edge)!, Float(v))
+                }
+            }
+
+            // Display / overflow
+            if let v = dict["display"] as? Int { YGNodeStyleSetDisplay(node, YGDisplay(rawValue: Int32(v))!) }
+            if let v = dict["overflow"] as? Int { YGNodeStyleSetOverflow(node, YGOverflow(rawValue: Int32(v))!) }
+
+            // Gap (keys: gap_<gutter>)
+            for gutter: Int32 in [0, 1, 2] {
+                if let v = dict["gap_\(gutter)"] as? Double {
+                    YGNodeStyleSetGap(node, YGGutter(rawValue: gutter)!, Float(v))
+                }
+            }
+        }
+        yoga.setObject(setBatch, forKeyedSubscript: "nodeStyleSetBatch" as NSString)
+    }
+
+    /// Applies a dimension value that may be a number, "auto", or "N%" string.
+    private func applyDimension(
+        _ node: YGNodeRef, _ value: Any,
+        set: (YGNodeRef, Float) -> Void,
+        setPercent: (YGNodeRef, Float) -> Void,
+        setAuto: (YGNodeRef) -> Void
+    ) {
+        if let s = value as? String {
+            if s == "auto" {
+                setAuto(node)
+            } else if s.hasSuffix("%"), let num = Float(s.dropLast()) {
+                setPercent(node, num)
+            }
+        } else if let n = value as? Double {
+            set(node, Float(n))
+        }
+    }
+
+    /// Applies a dimension value that may be a number or "N%" string (no auto variant).
+    private func applyDimensionNoAuto(
+        _ node: YGNodeRef, _ value: Any,
+        set: (YGNodeRef, Float) -> Void,
+        setPercent: (YGNodeRef, Float) -> Void
+    ) {
+        if let s = value as? String, s.hasSuffix("%"), let num = Float(s.dropLast()) {
+            setPercent(node, num)
+        } else if let n = value as? Double {
+            set(node, Float(n))
+        }
     }
 
     // MARK: - Helpers

@@ -47,8 +47,8 @@ class GlyphisRuntime {
 
         // submitRenderCommands: receives JSON string of render commands
         let submitRender: @convention(block) (String) -> Void = { [weak self] jsonStr in
-            guard let self = self,
-                  let data = jsonStr.data(using: .utf8),
+            guard let self = self else { return }
+            guard let data = jsonStr.data(using: .utf8),
                   let commands = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
             else { return }
             DispatchQueue.main.async {

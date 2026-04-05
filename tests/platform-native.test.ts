@@ -137,13 +137,13 @@ describe('onInput', () => {
     expect(callback).toHaveBeenCalledWith({ type: 'pointerup', x: 150, y: 250 });
   });
 
-  test('__glyphis_handleTouch ignores unknown event types', () => {
+  test('__glyphis_handleTouch dispatches pointermove', () => {
     const platform = createNativePlatform();
     const callback = mock(() => {});
     platform.onInput(callback);
 
     (globalThis as any).__glyphis_handleTouch('pointermove', 100, 200);
-    expect(callback).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith({ type: 'pointermove', x: 100, y: 200 });
   });
 
   test('__glyphis_handleTouch ignores non-pointer types', () => {

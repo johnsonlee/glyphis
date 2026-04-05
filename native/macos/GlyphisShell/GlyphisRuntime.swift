@@ -47,22 +47,10 @@ class GlyphisRuntime {
 
         // submitRenderCommands: receives JSON string of render commands
         let submitRender: @convention(block) (String) -> Void = { [weak self] jsonStr in
-            NSLog("[Glyphis] submitRenderCommands called, %d chars", jsonStr.count)
-            // Dump first text command for debugging
-            if let data = jsonStr.data(using: .utf8),
-               let cmds = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                for cmd in cmds {
-                    if cmd["type"] as? String == "text" {
-                        NSLog("[Glyphis] TEXT cmd: %@", cmd.description)
-                        break
-                    }
-                }
-            }
-            guard let self = self,
-                  let data = jsonStr.data(using: .utf8),
+            guard let self = self else { return }
+            guard let data = jsonStr.data(using: .utf8),
                   let commands = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-            else { NSLog("[Glyphis] submitRenderCommands: parse failed"); return }
-            NSLog("[Glyphis] submitRenderCommands: %d commands", commands.count)
+            else { return }
             DispatchQueue.main.async {
                 self.renderView?.setRenderCommands(commands)
             }

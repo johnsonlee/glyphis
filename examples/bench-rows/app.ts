@@ -1,5 +1,5 @@
-import { render, View, Text, createWebPlatform, createSignal, batch, glyphisRenderer } from '../../src';
-import type { Style } from '../../src';
+import { render, View, Text, RecyclerList, createWebPlatform, createSignal, batch, glyphisRenderer } from '../../src';
+import type { Style, RecyclerListHandle } from '../../src';
 
 // -- Data generation --
 
@@ -28,15 +28,15 @@ let nextId = 1;
 
 interface RowData {
   id: number;
-  label: ReturnType<typeof createSignal<string>>;
+  label: string;
 }
 
 function buildData(count: number): RowData[] {
-  const data: RowData[] = new Array(count);
-  for (let i = 0; i < count; i++) {
+  var data: RowData[] = new Array(count);
+  for (var i = 0; i < count; i++) {
     data[i] = {
       id: nextId++,
-      label: createSignal(`${pick(ADJECTIVES)} ${pick(COLORS)} ${pick(NOUNS)}`),
+      label: pick(ADJECTIVES) + ' ' + pick(COLORS) + ' ' + pick(NOUNS),
     };
   }
   return data;
@@ -44,19 +44,24 @@ function buildData(count: number): RowData[] {
 
 // -- Colors --
 
-const BG = '#1a1a2e';
-const ROW_EVEN = '#16213e';
-const ROW_ODD = '#0f3460';
-const SELECTED = '#e94560';
-const TEXT_COLOR = '#eee';
-const BTN_COLOR = '#533483';
+var BG = '#1a1a2e';
+var ROW_EVEN = '#16213e';
+var ROW_ODD = '#0f3460';
+var SELECTED = '#e94560';
+var TEXT_COLOR = '#eee';
+var BTN_COLOR = '#533483';
+
+// -- Row height for virtual list --
+var ROW_HEIGHT = 32;
 
 // -- Components --
 
 function ActionButton(props: { label: string; onPress: () => void }) {
-  const [pressed, setPressed] = createSignal(false);
+  var pressedSignal = createSignal(false);
+  var pressed = pressedSignal[0];
+  var setPressed = pressedSignal[1];
 
-  const textChild = glyphisRenderer.createComponent(Text, {
+  var textChild = glyphisRenderer.createComponent(Text, {
     style: {
       color: '#fff',
       fontSize: 13,
@@ -68,8 +73,8 @@ function ActionButton(props: { label: string; onPress: () => void }) {
   });
 
   return glyphisRenderer.createComponent(View, {
-    onPressIn: () => setPressed(true),
-    onPressOut: () => setPressed(false),
+    onPressIn: function() { setPressed(true); },
+    onPressOut: function() { setPressed(false); },
     onPress: props.onPress,
     get style(): Style {
       return {
@@ -85,96 +90,68 @@ function ActionButton(props: { label: string; onPress: () => void }) {
   });
 }
 
-function Row(props: {
-  id: number;
-  label: () => string;
-  index: () => number;
-  selected: () => boolean;
-  onSelect: () => void;
-  onDelete: () => void;
-}) {
-  const idText = glyphisRenderer.createComponent(Text, {
-    style: {
-      color: TEXT_COLOR,
-      fontSize: 14,
-      fontWeight: '400',
-      fontFamily: 'monospace',
-      width: 60,
-    } as Style,
-    children: String(props.id),
-  });
-
-  const labelText = glyphisRenderer.createComponent(Text, {
-    style: {
-      color: TEXT_COLOR,
-      fontSize: 14,
-      fontWeight: '400',
-      fontFamily: 'system-ui',
-      flex: 1,
-    } as Style,
-    get children() { return props.label(); },
-  });
-
-  const [delPressed, setDelPressed] = createSignal(false);
-
-  const deleteBtn = glyphisRenderer.createComponent(View, {
-    onPressIn: () => setDelPressed(true),
-    onPressOut: () => setDelPressed(false),
-    onPress: props.onDelete,
-    get style(): Style {
-      return {
-        width: 30,
-        height: 24,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-        opacity: delPressed() ? 0.5 : 1,
-      };
-    },
-    children: glyphisRenderer.createComponent(Text, {
-      style: {
-        color: '#e94560',
-        fontSize: 16,
-        fontWeight: '700',
-        fontFamily: 'system-ui',
-        textAlign: 'center' as const,
-      } as Style,
-      children: 'x',
-    }),
-  });
-
+// renderRow receives signal accessors — called ONCE per slot, nodes reused on scroll
+function renderRow(getItem: () => RowData | null, getIndex: () => number, selectedId: () => number | null, onSelect: (id: number) => void, onDelete: (id: number) => void) {
   return glyphisRenderer.createComponent(View, {
-    onPress: props.onSelect,
+    onPress: function() { var item = getItem(); if (item) onSelect(item.id); },
     get style(): Style {
-      const sel = props.selected();
-      const idx = props.index();
+      var item = getItem();
+      var index = getIndex();
+      var sel = selectedId();
+      var isSelected = item ? sel === item.id : false;
       return {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
-        backgroundColor: sel ? SELECTED : (idx % 2 === 0 ? ROW_EVEN : ROW_ODD),
+        backgroundColor: isSelected ? SELECTED : (index % 2 === 0 ? ROW_EVEN : ROW_ODD),
         paddingHorizontal: 12,
         paddingVertical: 6,
-        height: 32,
+        height: ROW_HEIGHT,
       };
     },
-    children: [idText, labelText, deleteBtn],
+    children: [
+      glyphisRenderer.createComponent(Text, {
+        style: { color: TEXT_COLOR, fontSize: 14, fontWeight: '400', fontFamily: 'monospace', width: 60 } as Style,
+        get children() { var item = getItem(); return item ? String(item.id) : ''; },
+      }),
+      glyphisRenderer.createComponent(Text, {
+        style: { color: TEXT_COLOR, fontSize: 14, fontWeight: '400', fontFamily: 'system-ui', flex: 1 } as Style,
+        get children() { var item = getItem(); return item ? item.label : ''; },
+      }),
+      glyphisRenderer.createComponent(View, {
+        onPress: function() { var item = getItem(); if (item) onDelete(item.id); },
+        style: { width: 30, height: 24, justifyContent: 'center' as const, alignItems: 'center' as const } as Style,
+        children: glyphisRenderer.createComponent(Text, {
+          style: { color: '#e94560', fontSize: 16, fontWeight: '700', fontFamily: 'system-ui', textAlign: 'center' as const } as Style,
+          children: 'x',
+        }),
+      }),
+    ],
   });
 }
 
 function App() {
-  const [rows, setRows] = createSignal<RowData[]>([]);
-  const [selectedId, setSelectedId] = createSignal<number | null>(null);
-  const [timing, setTiming] = createSignal('');
+  var rowsSignal = createSignal<RowData[]>([]);
+  var rows = rowsSignal[0];
+  var setRows = rowsSignal[1];
+  var selectedSignal = createSignal<number | null>(null);
+  var selectedId = selectedSignal[0];
+  var setSelectedId = selectedSignal[1];
+  var timingSignal = createSignal('');
+  var timing = timingSignal[0];
+  var setTiming = timingSignal[1];
+
+  var listHandle: RecyclerListHandle | null = null;
 
   function timed(name: string, fn: () => void) {
-    const t0 = performance.now();
+    var t0 = performance.now();
     fn();
-    const t1 = performance.now();
-    setTiming(`${name}: ${(t1 - t0).toFixed(1)}ms`);
+    var t1 = performance.now();
+    setTiming(name + ': ' + (t1 - t0).toFixed(1) + 'ms');
   }
 
   function create1k() {
-    timed('Create 1,000', () => {
-      batch(() => {
+    timed('Create 1,000', function() {
+      batch(function() {
         setRows(buildData(1000));
         setSelectedId(null);
       });
@@ -182,8 +159,8 @@ function App() {
   }
 
   function create10k() {
-    timed('Create 10,000', () => {
-      batch(() => {
+    timed('Create 10,000', function() {
+      batch(function() {
         setRows(buildData(10000));
         setSelectedId(null);
       });
@@ -191,27 +168,29 @@ function App() {
   }
 
   function append1k() {
-    timed('Append 1,000', () => {
-      setRows(prev => [...prev, ...buildData(1000)]);
+    timed('Append 1,000', function() {
+      var prev = rows();
+      setRows(prev.concat(buildData(1000)));
     });
   }
 
   function updateEvery10th() {
-    timed('Update every 10th', () => {
-      const data = rows();
-      for (let i = 0; i < data.length; i += 10) {
-        const [get, set] = data[i].label;
-        set(get() + ' !!!');
+    timed('Update every 10th', function() {
+      var data = rows();
+      var updated = data.slice();
+      for (var i = 0; i < updated.length; i += 10) {
+        updated[i] = { id: updated[i].id, label: updated[i].label + ' !!!' };
       }
+      setRows(updated);
     });
   }
 
   function swapRows() {
-    timed('Swap Rows', () => {
-      const data = rows();
+    timed('Swap Rows', function() {
+      var data = rows();
       if (data.length > 998) {
-        const next = [...data];
-        const tmp = next[1];
+        var next = data.slice();
+        var tmp = next[1];
         next[1] = next[998];
         next[998] = tmp;
         setRows(next);
@@ -220,17 +199,24 @@ function App() {
   }
 
   function clearRows() {
-    timed('Clear', () => {
-      batch(() => {
+    timed('Clear', function() {
+      batch(function() {
         setRows([]);
         setSelectedId(null);
       });
     });
   }
 
-  // -- Toolbar --
+  function scrollDown() {
+    if (listHandle) listHandle.pageDown();
+  }
 
-  const toolbar = glyphisRenderer.createComponent(View, {
+  function scrollUp() {
+    if (listHandle) listHandle.pageUp();
+  }
+
+  // -- Toolbar --
+  var toolbar = glyphisRenderer.createComponent(View, {
     style: {
       flexDirection: 'row' as const,
       flexWrap: 'wrap' as const,
@@ -243,58 +229,41 @@ function App() {
       glyphisRenderer.createComponent(ActionButton, { label: 'Create 1,000', onPress: create1k }),
       glyphisRenderer.createComponent(ActionButton, { label: 'Create 10,000', onPress: create10k }),
       glyphisRenderer.createComponent(ActionButton, { label: 'Append 1,000', onPress: append1k }),
-      glyphisRenderer.createComponent(ActionButton, { label: 'Update every 10th', onPress: updateEvery10th }),
-      glyphisRenderer.createComponent(ActionButton, { label: 'Swap Rows', onPress: swapRows }),
+      glyphisRenderer.createComponent(ActionButton, { label: 'Update 10th', onPress: updateEvery10th }),
+      glyphisRenderer.createComponent(ActionButton, { label: 'Swap', onPress: swapRows }),
       glyphisRenderer.createComponent(ActionButton, { label: 'Clear', onPress: clearRows }),
+      glyphisRenderer.createComponent(ActionButton, { label: '\u25B2', onPress: scrollUp }),
+      glyphisRenderer.createComponent(ActionButton, { label: '\u25BC', onPress: scrollDown }),
       glyphisRenderer.createComponent(Text, {
-        style: {
-          color: '#aaa',
-          fontSize: 13,
-          fontWeight: '400',
-          fontFamily: 'monospace',
-          marginLeft: 8,
-        } as Style,
+        style: { color: '#aaa', fontSize: 13, fontWeight: '400', fontFamily: 'monospace', marginLeft: 8 } as Style,
         get children() { return timing() || 'Ready'; },
       }),
     ],
   });
 
-  // -- Row list --
-  // We rebuild the row component list reactively whenever rows() or selectedId() changes.
-
-  const rowList = glyphisRenderer.createComponent(View, {
-    style: {
-      flex: 1,
-    } as Style,
-    get children() {
-      const data = rows();
-      const sel = selectedId();
-      return data.map((row, i) =>
-        glyphisRenderer.createComponent(Row, {
-          id: row.id,
-          label: row.label[0],
-          index: () => i,
-          selected: () => sel === row.id,
-          onSelect: () => setSelectedId(row.id),
-          onDelete: () => setRows(prev => prev.filter(r => r.id !== row.id)),
-        })
-      );
+  // -- RecyclerList --
+  var rowList = glyphisRenderer.createComponent(RecyclerList, {
+    get data() { return rows(); },
+    itemHeight: ROW_HEIGHT,
+    style: { flex: 1, height: 700 } as Style,
+    ref: function(handle: RecyclerListHandle) { listHandle = handle; },
+    renderItem: function(getItem: () => RowData | null, getIndex: () => number) {
+      return renderRow(getItem, getIndex, selectedId, function(id: number) { setSelectedId(id); }, function(id: number) {
+        setRows(function(prev: RowData[]) { return prev.filter(function(r) { return r.id !== id; }); });
+      });
     },
   });
 
   return glyphisRenderer.createComponent(View, {
-    style: {
-      flex: 1,
-      backgroundColor: BG,
-    } as Style,
+    style: { flex: 1, backgroundColor: BG } as Style,
     children: [toolbar, rowList],
   });
 }
 
 // -- Bootstrap --
 
-const canvas = document.getElementById('glyphis-root') as HTMLCanvasElement;
+var canvas = document.getElementById('glyphis-root') as HTMLCanvasElement;
 if (canvas) {
-  const platform = createWebPlatform(canvas);
-  render(() => glyphisRenderer.createComponent(App, {}), platform);
+  var platform = createWebPlatform(canvas);
+  render(function() { return glyphisRenderer.createComponent(App, {}); }, platform);
 }

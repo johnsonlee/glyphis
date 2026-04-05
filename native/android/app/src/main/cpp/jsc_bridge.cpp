@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 #include <android/log.h>
 
 #include <JavaScriptCore/JavaScript.h>
@@ -19,13 +20,29 @@ static JavaVM*            g_jvm     = NULL;
 static jobject            g_runtime = NULL;   /* GlobalRef to GlyphisRuntime */
 
 /* ------------------------------------------------------------------ */
-/*  Yoga node storage                                                 */
+/*  Yoga node storage (dynamically growing)                           */
 /* ------------------------------------------------------------------ */
 
-#define YOGA_MAX_NODES 131072
+static YGNodeRef* g_yoga_nodes    = NULL;
+static int        g_yoga_capacity = 0;
+static int        g_yoga_next_id  = 1;
 
-static YGNodeRef g_yoga_nodes[YOGA_MAX_NODES];
-static int       g_yoga_next_id = 1;
+/* ------------------------------------------------------------------ */
+/*  Per-node text/font storage for native measure                     */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    char* text;
+    float fontSize;
+    char  fontFamily[64];
+    char  fontWeight[16];
+} YogaMeasureData;
+
+static YogaMeasureData** g_yoga_measure_data    = NULL;
+static int               g_yoga_measure_capacity = 0;
+
+/* Cached JNI method ID for onMeasureText */
+static jmethodID g_measureTextMethod = NULL;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -48,9 +65,29 @@ static JNIEnv* getJNIEnv(void) {
     return env;
 }
 
+static void yoga_ensure_capacity(int needed) {
+    if (needed < g_yoga_capacity) return;
+    int newCap = g_yoga_capacity == 0 ? 1024 : g_yoga_capacity;
+    while (newCap <= needed) newCap *= 2;
+    g_yoga_nodes = (YGNodeRef*)realloc(g_yoga_nodes, newCap * sizeof(YGNodeRef));
+    memset(g_yoga_nodes + g_yoga_capacity, 0, (newCap - g_yoga_capacity) * sizeof(YGNodeRef));
+    g_yoga_measure_data = (YogaMeasureData**)realloc(g_yoga_measure_data, newCap * sizeof(YogaMeasureData*));
+    memset(g_yoga_measure_data + g_yoga_measure_capacity, 0, (newCap - g_yoga_measure_capacity) * sizeof(YogaMeasureData*));
+    g_yoga_capacity = newCap;
+    g_yoga_measure_capacity = newCap;
+}
+
 static YGNodeRef yoga_get_node(int id) {
-    if (id < 1 || id >= YOGA_MAX_NODES) return NULL;
+    if (id < 1 || id >= g_yoga_capacity) return NULL;
     return g_yoga_nodes[id];
+}
+
+static void yoga_free_measure_data(int id) {
+    if (id >= 0 && id < g_yoga_measure_capacity && g_yoga_measure_data[id]) {
+        free(g_yoga_measure_data[id]->text);
+        free(g_yoga_measure_data[id]);
+        g_yoga_measure_data[id] = NULL;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -233,46 +270,33 @@ static YGSize yoga_measure_func(
     YGMeasureMode heightMode)
 {
     YGSize result = { 0.0f, 0.0f };
-    if (!g_context || !nodeRef) return result;
+    if (!nodeRef) return result;
 
-    /* The node context stores the node ID as an integer cast to void* */
-    void* ctx = YGNodeGetContext(nodeRef);
-    int nodeId = (int)(intptr_t)ctx;
+    int id = (int)(intptr_t)YGNodeGetContext(nodeRef);
+    if (id < 1 || id >= g_yoga_measure_capacity) return result;
 
-    char script[256];
-    snprintf(script, sizeof(script),
-        "__yoga_measure(%d, %f, %d, %f, %d)",
-        nodeId, width, (int)widthMode, height, (int)heightMode);
+    YogaMeasureData* data = g_yoga_measure_data[id];
+    if (!data || !data->text) return result;
 
-    LOGI("[Yoga] measure called for node %d, evaluating: %s", nodeId, script);
+    /* Measure text via JNI callback to Kotlin onMeasureText */
+    JNIEnv* env = getJNIEnv();
+    if (!env || !g_runtime || !g_measureTextMethod) return result;
 
-    JSStringRef jsScript = CStringToJSString(script);
-    JSValueRef exception = NULL;
-    JSValueRef jsResult = JSEvaluateScript(g_context, jsScript, NULL, NULL, 0, &exception);
-    JSStringRelease(jsScript);
+    jstring jtext   = env->NewStringUTF(data->text);
+    jstring jweight = env->NewStringUTF(data->fontWeight);
+    jdoubleArray jresult = (jdoubleArray)env->CallObjectMethod(
+        g_runtime, g_measureTextMethod, jtext, (double)data->fontSize, jweight);
 
-    if (exception) {
-        JSStringRef exStr = JSValueToStringCopy(g_context, exception, NULL);
-        char* msg = JSStringToCString(exStr);
-        LOGE("[Yoga] measure error: %s", msg);
-        free(msg);
-        JSStringRelease(exStr);
-        return result;
+    if (jresult) {
+        jdouble* vals = env->GetDoubleArrayElements(jresult, NULL);
+        result.width  = (float)vals[0];
+        result.height = (float)vals[1];
+        env->ReleaseDoubleArrayElements(jresult, vals, 0);
+        env->DeleteLocalRef(jresult);
     }
+    env->DeleteLocalRef(jtext);
+    env->DeleteLocalRef(jweight);
 
-    if (jsResult && JSValueIsObject(g_context, jsResult)) {
-        JSObjectRef obj = JSValueToObject(g_context, jsResult, NULL);
-        JSStringRef wKey = CStringToJSString("width");
-        JSStringRef hKey = CStringToJSString("height");
-        JSValueRef wVal = JSObjectGetProperty(g_context, obj, wKey, NULL);
-        JSValueRef hVal = JSObjectGetProperty(g_context, obj, hKey, NULL);
-        result.width  = (float)JSValueToNumber(g_context, wVal, NULL);
-        result.height = (float)JSValueToNumber(g_context, hVal, NULL);
-        JSStringRelease(wKey);
-        JSStringRelease(hKey);
-    }
-
-    LOGI("[Yoga] measure result: %.1f x %.1f", result.width, result.height);
     return result;
 }
 
@@ -286,10 +310,7 @@ static JSValueRef js_yoga_nodeNew(
     size_t argc, const JSValueRef argv[], JSValueRef* exc)
 {
     int id = g_yoga_next_id++;
-    if (id >= YOGA_MAX_NODES) {
-        LOGE("[Yoga] node limit exceeded");
-        return JSValueMakeNumber(ctx, -1);
-    }
+    yoga_ensure_capacity(id + 1);
     YGNodeRef node = YGNodeNew();
     g_yoga_nodes[id] = node;
     return JSValueMakeNumber(ctx, id);
@@ -304,6 +325,7 @@ static JSValueRef js_yoga_nodeFreeRecursive(
     int id = (int)JSValueToNumber(ctx, argv[0], NULL);
     YGNodeRef node = yoga_get_node(id);
     if (node) {
+        yoga_free_measure_data(id);
         YGNodeFreeRecursive(node);
         g_yoga_nodes[id] = NULL;
     }
@@ -387,6 +409,76 @@ static JSValueRef js_yoga_enableMeasure(
         YGNodeSetContext(node, (void*)(intptr_t)id);
         YGNodeSetMeasureFunc(node, yoga_measure_func);
     }
+    return JSValueMakeUndefined(ctx);
+}
+
+/* __yoga.enableMeasureNative(id, text, fontSize, fontFamily, fontWeight) */
+static JSValueRef js_yoga_enableMeasureNative(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 5) return JSValueMakeUndefined(ctx);
+    int id = (int)JSValueToNumber(ctx, argv[0], NULL);
+    YGNodeRef node = yoga_get_node(id);
+    if (!node) return JSValueMakeUndefined(ctx);
+
+    /* Extract text */
+    JSStringRef textStr = JSValueToStringCopy(ctx, argv[1], NULL);
+    char* text = JSStringToCString(textStr);
+    JSStringRelease(textStr);
+
+    /* Extract fontSize */
+    float fontSize = (float)JSValueToNumber(ctx, argv[2], NULL);
+
+    /* Extract fontFamily */
+    JSStringRef familyStr = JSValueToStringCopy(ctx, argv[3], NULL);
+    char* fontFamily = JSStringToCString(familyStr);
+    JSStringRelease(familyStr);
+
+    /* Extract fontWeight */
+    JSStringRef weightStr = JSValueToStringCopy(ctx, argv[4], NULL);
+    char* fontWeight = JSStringToCString(weightStr);
+    JSStringRelease(weightStr);
+
+    /* Free old measure data if any */
+    yoga_free_measure_data(id);
+
+    /* Allocate and populate measure data */
+    YogaMeasureData* data = (YogaMeasureData*)calloc(1, sizeof(YogaMeasureData));
+    data->text = text; /* takes ownership */
+    data->fontSize = fontSize;
+    strncpy(data->fontFamily, fontFamily, sizeof(data->fontFamily) - 1);
+    strncpy(data->fontWeight, fontWeight, sizeof(data->fontWeight) - 1);
+    free(fontFamily);
+    free(fontWeight);
+
+    yoga_ensure_capacity(id + 1);
+    g_yoga_measure_data[id] = data;
+
+    YGNodeSetContext(node, (void*)(intptr_t)id);
+    YGNodeSetMeasureFunc(node, yoga_measure_func);
+
+    return JSValueMakeUndefined(ctx);
+}
+
+/* __yoga.updateMeasureText(id, text) */
+static JSValueRef js_yoga_updateMeasureText(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 2) return JSValueMakeUndefined(ctx);
+    int id = (int)JSValueToNumber(ctx, argv[0], NULL);
+
+    if (id < 1 || id >= g_yoga_measure_capacity || !g_yoga_measure_data[id])
+        return JSValueMakeUndefined(ctx);
+
+    JSStringRef textStr = JSValueToStringCopy(ctx, argv[1], NULL);
+    char* text = JSStringToCString(textStr);
+    JSStringRelease(textStr);
+
+    free(g_yoga_measure_data[id]->text);
+    g_yoga_measure_data[id]->text = text;
+
     return JSValueMakeUndefined(ctx);
 }
 
@@ -553,6 +645,197 @@ static JSValueRef js_yoga_nodeStyleSetGap(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Yoga bridge: batch style setter                                   */
+/* ------------------------------------------------------------------ */
+
+/* Helper: read a numeric property from a JS object, returns NAN if missing */
+static double js_obj_get_number(JSContextRef ctx, JSObjectRef obj, const char* key) {
+    JSStringRef jsKey = JSStringCreateWithUTF8CString(key);
+    JSValueRef val = JSObjectGetProperty(ctx, obj, jsKey, NULL);
+    JSStringRelease(jsKey);
+    if (JSValueIsUndefined(ctx, val) || JSValueIsNull(ctx, val)) return NAN;
+    return JSValueToNumber(ctx, val, NULL);
+}
+
+/* Helper: read a string property, returns NULL if missing. Caller must free. */
+static char* js_obj_get_string(JSContextRef ctx, JSObjectRef obj, const char* key) {
+    JSStringRef jsKey = JSStringCreateWithUTF8CString(key);
+    JSValueRef val = JSObjectGetProperty(ctx, obj, jsKey, NULL);
+    JSStringRelease(jsKey);
+    if (JSValueIsUndefined(ctx, val) || JSValueIsNull(ctx, val)) return NULL;
+    JSStringRef str = JSValueToStringCopy(ctx, val, NULL);
+    char* cstr = JSStringToCString(str);
+    JSStringRelease(str);
+    return cstr;
+}
+
+/* Helper: apply a dimension value (number, "auto", or "N%") */
+static void apply_dimension(
+    JSContextRef ctx, JSObjectRef obj, const char* key,
+    YGNodeRef node,
+    void (*setVal)(YGNodeRef, float),
+    void (*setPct)(YGNodeRef, float),
+    void (*setAuto)(YGNodeRef))
+{
+    JSStringRef jsKey = JSStringCreateWithUTF8CString(key);
+    JSValueRef val = JSObjectGetProperty(ctx, obj, jsKey, NULL);
+    JSStringRelease(jsKey);
+    if (JSValueIsUndefined(ctx, val) || JSValueIsNull(ctx, val)) return;
+
+    if (JSValueIsString(ctx, val)) {
+        JSStringRef str = JSValueToStringCopy(ctx, val, NULL);
+        char* cstr = JSStringToCString(str);
+        JSStringRelease(str);
+        if (strcmp(cstr, "auto") == 0 && setAuto) {
+            setAuto(node);
+        } else {
+            size_t len = strlen(cstr);
+            if (len > 1 && cstr[len - 1] == '%') {
+                cstr[len - 1] = '\0';
+                setPct(node, (float)atof(cstr));
+            }
+        }
+        free(cstr);
+    } else if (JSValueIsNumber(ctx, val)) {
+        setVal(node, (float)JSValueToNumber(ctx, val, NULL));
+    }
+}
+
+/* Helper: apply a dimension value without auto variant */
+static void apply_dimension_no_auto(
+    JSContextRef ctx, JSObjectRef obj, const char* key,
+    YGNodeRef node,
+    void (*setVal)(YGNodeRef, float),
+    void (*setPct)(YGNodeRef, float))
+{
+    apply_dimension(ctx, obj, key, node, setVal, setPct, NULL);
+}
+
+/* __yoga.nodeStyleSetBatch(nodeId, jsonString) */
+static JSValueRef js_yoga_nodeStyleSetBatch(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 2) return JSValueMakeUndefined(ctx);
+    int id = (int)JSValueToNumber(ctx, argv[0], NULL);
+    YGNodeRef node = yoga_get_node(id);
+    if (!node) return JSValueMakeUndefined(ctx);
+
+    /* Parse JSON string into a JS object using JSON.parse */
+    JSObjectRef global = JSContextGetGlobalObject(ctx);
+    JSStringRef jsonName = JSStringCreateWithUTF8CString("JSON");
+    JSObjectRef jsonObj = (JSObjectRef)JSObjectGetProperty(ctx, global, jsonName, NULL);
+    JSStringRelease(jsonName);
+
+    JSStringRef parseName = JSStringCreateWithUTF8CString("parse");
+    JSObjectRef parseFn = (JSObjectRef)JSObjectGetProperty(ctx, jsonObj, parseName, NULL);
+    JSStringRelease(parseName);
+
+    JSValueRef parseArgs[1] = { argv[1] };
+    JSValueRef parseResult = JSObjectCallAsFunction(ctx, parseFn, jsonObj, 1, parseArgs, exc);
+    if (!parseResult || JSValueIsUndefined(ctx, parseResult)) return JSValueMakeUndefined(ctx);
+
+    JSObjectRef style = JSValueToObject(ctx, parseResult, NULL);
+    if (!style) return JSValueMakeUndefined(ctx);
+
+    double v;
+
+    /* Dimensions */
+    apply_dimension(ctx, style, "width", node, YGNodeStyleSetWidth, YGNodeStyleSetWidthPercent, YGNodeStyleSetWidthAuto);
+    apply_dimension(ctx, style, "height", node, YGNodeStyleSetHeight, YGNodeStyleSetHeightPercent, YGNodeStyleSetHeightAuto);
+    apply_dimension_no_auto(ctx, style, "minWidth", node, YGNodeStyleSetMinWidth, YGNodeStyleSetMinWidthPercent);
+    apply_dimension_no_auto(ctx, style, "minHeight", node, YGNodeStyleSetMinHeight, YGNodeStyleSetMinHeightPercent);
+    apply_dimension_no_auto(ctx, style, "maxWidth", node, YGNodeStyleSetMaxWidth, YGNodeStyleSetMaxWidthPercent);
+    apply_dimension_no_auto(ctx, style, "maxHeight", node, YGNodeStyleSetMaxHeight, YGNodeStyleSetMaxHeightPercent);
+
+    /* Flex numeric */
+    v = js_obj_get_number(ctx, style, "flex");
+    if (!isnan(v)) YGNodeStyleSetFlex(node, (float)v);
+    v = js_obj_get_number(ctx, style, "flexGrow");
+    if (!isnan(v)) YGNodeStyleSetFlexGrow(node, (float)v);
+    v = js_obj_get_number(ctx, style, "flexShrink");
+    if (!isnan(v)) YGNodeStyleSetFlexShrink(node, (float)v);
+    apply_dimension(ctx, style, "flexBasis", node, YGNodeStyleSetFlexBasis, YGNodeStyleSetFlexBasisPercent, YGNodeStyleSetFlexBasisAuto);
+
+    /* Flex enums (pre-resolved to int by JS) */
+    v = js_obj_get_number(ctx, style, "flexDirection");
+    if (!isnan(v)) YGNodeStyleSetFlexDirection(node, (YGFlexDirection)(int)v);
+    v = js_obj_get_number(ctx, style, "flexWrap");
+    if (!isnan(v)) YGNodeStyleSetFlexWrap(node, (YGWrap)(int)v);
+
+    /* Alignment enums */
+    v = js_obj_get_number(ctx, style, "justifyContent");
+    if (!isnan(v)) YGNodeStyleSetJustifyContent(node, (YGJustify)(int)v);
+    v = js_obj_get_number(ctx, style, "alignItems");
+    if (!isnan(v)) YGNodeStyleSetAlignItems(node, (YGAlign)(int)v);
+    v = js_obj_get_number(ctx, style, "alignSelf");
+    if (!isnan(v)) YGNodeStyleSetAlignSelf(node, (YGAlign)(int)v);
+    v = js_obj_get_number(ctx, style, "alignContent");
+    if (!isnan(v)) YGNodeStyleSetAlignContent(node, (YGAlign)(int)v);
+
+    /* Padding (keys: padding_<edge>) */
+    {
+        int edges[] = {0, 1, 2, 3, 6, 7, 8};
+        for (int i = 0; i < 7; i++) {
+            char key[16];
+            snprintf(key, sizeof(key), "padding_%d", edges[i]);
+            v = js_obj_get_number(ctx, style, key);
+            if (!isnan(v)) YGNodeStyleSetPadding(node, (YGEdge)edges[i], (float)v);
+        }
+    }
+
+    /* Margin (keys: margin_<edge>) */
+    {
+        int edges[] = {0, 1, 2, 3, 6, 7, 8};
+        for (int i = 0; i < 7; i++) {
+            char key[16];
+            snprintf(key, sizeof(key), "margin_%d", edges[i]);
+            v = js_obj_get_number(ctx, style, key);
+            if (!isnan(v)) YGNodeStyleSetMargin(node, (YGEdge)edges[i], (float)v);
+        }
+    }
+
+    /* Position type */
+    v = js_obj_get_number(ctx, style, "positionType");
+    if (!isnan(v)) YGNodeStyleSetPositionType(node, (YGPositionType)(int)v);
+
+    /* Position edges (keys: position_<edge>) */
+    for (int edge = 0; edge <= 3; edge++) {
+        char key[16];
+        snprintf(key, sizeof(key), "position_%d", edge);
+        v = js_obj_get_number(ctx, style, key);
+        if (!isnan(v)) YGNodeStyleSetPosition(node, (YGEdge)edge, (float)v);
+    }
+
+    /* Border (keys: border_<edge>) */
+    {
+        int edges[] = {0, 1, 2, 3, 8};
+        for (int i = 0; i < 5; i++) {
+            char key[16];
+            snprintf(key, sizeof(key), "border_%d", edges[i]);
+            v = js_obj_get_number(ctx, style, key);
+            if (!isnan(v)) YGNodeStyleSetBorder(node, (YGEdge)edges[i], (float)v);
+        }
+    }
+
+    /* Display / overflow */
+    v = js_obj_get_number(ctx, style, "display");
+    if (!isnan(v)) YGNodeStyleSetDisplay(node, (YGDisplay)(int)v);
+    v = js_obj_get_number(ctx, style, "overflow");
+    if (!isnan(v)) YGNodeStyleSetOverflow(node, (YGOverflow)(int)v);
+
+    /* Gap (keys: gap_<gutter>) */
+    for (int gutter = 0; gutter <= 2; gutter++) {
+        char key[8];
+        snprintf(key, sizeof(key), "gap_%d", gutter);
+        v = js_obj_get_number(ctx, style, key);
+        if (!isnan(v)) YGNodeStyleSetGap(node, (YGGutter)gutter, (float)v);
+    }
+
+    return JSValueMakeUndefined(ctx);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Helper: register a JS function on a JSObjectRef                   */
 /* ------------------------------------------------------------------ */
 
@@ -596,6 +879,8 @@ static void register_yoga_bridge(JSContextRef ctx, JSObjectRef global) {
     setFunctionProperty(ctx, yoga, "nodeCalculateLayout", js_yoga_nodeCalculateLayout);
     setFunctionProperty(ctx, yoga, "nodeMarkDirty",       js_yoga_nodeMarkDirty);
     setFunctionProperty(ctx, yoga, "enableMeasure",       js_yoga_enableMeasure);
+    setFunctionProperty(ctx, yoga, "enableMeasureNative", js_yoga_enableMeasureNative);
+    setFunctionProperty(ctx, yoga, "updateMeasureText",   js_yoga_updateMeasureText);
 
     /* Layout getters */
     setFunctionProperty(ctx, yoga, "nodeLayoutGetLeft",   js_yoga_nodeLayoutGetLeft);
@@ -651,6 +936,9 @@ static void register_yoga_bridge(JSContextRef ctx, JSObjectRef global) {
 
     /* Gap setter */
     setFunctionProperty(ctx, yoga, "nodeStyleSetGap",              js_yoga_nodeStyleSetGap);
+
+    /* Batch style setter */
+    setFunctionProperty(ctx, yoga, "nodeStyleSetBatch",            js_yoga_nodeStyleSetBatch);
 }
 
 /* ------------------------------------------------------------------ */
@@ -658,15 +946,21 @@ static void register_yoga_bridge(JSContextRef ctx, JSObjectRef global) {
 /* ------------------------------------------------------------------ */
 
 static void yoga_destroy_all(void) {
-    for (int i = 1; i < YOGA_MAX_NODES; i++) {
+    for (int i = 1; i < g_yoga_capacity; i++) {
         if (g_yoga_nodes[i]) {
-            /* Clear measure func context to avoid dangling pointers */
             YGNodeSetContext(g_yoga_nodes[i], NULL);
             YGNodeSetMeasureFunc(g_yoga_nodes[i], NULL);
             YGNodeFreeRecursive(g_yoga_nodes[i]);
             g_yoga_nodes[i] = NULL;
         }
+        yoga_free_measure_data(i);
     }
+    free(g_yoga_nodes);
+    g_yoga_nodes = NULL;
+    g_yoga_capacity = 0;
+    free(g_yoga_measure_data);
+    g_yoga_measure_data = NULL;
+    g_yoga_measure_capacity = 0;
     g_yoga_next_id = 1;
 }
 
@@ -704,6 +998,12 @@ Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeInit(JNIEnv* env, jobject 
 {
     env->GetJavaVM(&g_jvm);
     g_runtime = env->NewGlobalRef(thiz);
+
+    /* Cache onMeasureText method ID for native measure during layout */
+    jclass runtimeCls = env->GetObjectClass(thiz);
+    g_measureTextMethod = env->GetMethodID(runtimeCls,
+        "onMeasureText", "(Ljava/lang/String;DLjava/lang/String;)[D");
+    env->DeleteLocalRef(runtimeCls);
 
     g_context = JSGlobalContextCreate(NULL);
     JSObjectRef global = JSContextGetGlobalObject(g_context);
@@ -812,7 +1112,6 @@ Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeInit(JNIEnv* env, jobject 
     JSEvaluateScript(g_context, polyfillStr, NULL, NULL, 0, NULL);
     JSStringRelease(polyfillStr);
 
-    LOGI("JSC context initialized with Yoga bridge");
 }
 
 /* ------------------------------------------------------------------ */
@@ -861,7 +1160,7 @@ Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeDestroy(
         env->DeleteGlobalRef(g_runtime);
         g_runtime = NULL;
     }
-    LOGI("JSC context destroyed");
+    g_measureTextMethod = NULL;
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,4 +1,3 @@
-import type { Node } from 'yoga-layout';
 import { Edge, FlexDirection, Justify, Align, Wrap, PositionType, Display, Overflow, Gutter } from 'yoga-layout';
 import type { Style } from './types';
 
@@ -52,7 +51,7 @@ const OVERFLOW_MAP: Record<string, Overflow> = {
   'scroll': Overflow.Scroll,
 };
 
-export function applyStyle(node: Node, style: Style): void {
+export function applyStyle(node: any, style: Style): void {
   if (style.width !== undefined) node.setWidth(style.width);
   if (style.height !== undefined) node.setHeight(style.height);
   if (style.minWidth !== undefined) node.setMinWidth(style.minWidth);

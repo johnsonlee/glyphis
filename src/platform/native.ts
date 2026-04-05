@@ -1,7 +1,7 @@
 import type { Platform, RenderCommand, InputEvent } from '../types';
 
 declare const __glyphis_native: {
-  submitRenderCommands(jsonString: string): void;
+  submitRenderCommands(packed: string): void;
   measureText(text: string, fontSize: number, fontFamily: string, fontWeight: string): { width: number; height: number };
   getViewportSize(): { width: number; height: number };
   platform: 'ios' | 'android';
@@ -35,8 +35,8 @@ export function createNativePlatform(): NativePlatform {
 
     onInput(callback: (event: InputEvent) => void) {
       (globalThis as any).__glyphis_handleTouch = (type: string, x: number, y: number) => {
-        if (type === 'pointerdown' || type === 'pointerup') {
-          callback({ type, x, y });
+        if (type === 'pointerdown' || type === 'pointerup' || type === 'pointermove') {
+          callback({ type, x, y } as any);
         }
       };
     },

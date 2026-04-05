@@ -13,11 +13,8 @@ import org.json.JSONObject
 
 /**
  * Custom View that renders Glyphis framework render commands using Android Canvas.
- * Receives a JSON-derived list of render commands from the JS runtime and
+ * Receives a list of JSON render command objects from the JS runtime and
  * draws them in [onDraw] using the Canvas 2D API.
- *
- * This mirrors the iOS GlyphisRenderView which uses Core Graphics for the same
- * render command protocol.
  */
 class GlyphisRenderView(context: Context) : View(context) {
 
@@ -51,11 +48,10 @@ class GlyphisRenderView(context: Context) : View(context) {
                     val y = cmd.optDouble("y").toFloat()
                     val w = cmd.optDouble("width").toFloat()
                     val h = cmd.optDouble("height").toFloat()
-                    val borderRadius = cmd.opt("borderRadius")
-                    if (borderRadius is Number && borderRadius.toFloat() > 0) {
-                        val r = borderRadius.toFloat()
+                    val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
+                    if (borderRadius > 0) {
                         val path = Path().apply {
-                            addRoundRect(RectF(x, y, x + w, y + h), r, r, Path.Direction.CW)
+                            addRoundRect(RectF(x, y, x + w, y + h), borderRadius, borderRadius, Path.Direction.CW)
                         }
                         canvas.clipPath(path)
                     } else {
@@ -69,28 +65,30 @@ class GlyphisRenderView(context: Context) : View(context) {
         canvas.restore()
     }
 
+    // -- Command drawers --
+
     private fun drawRect(canvas: Canvas, cmd: JSONObject) {
         val x = cmd.optDouble("x").toFloat()
         val y = cmd.optDouble("y").toFloat()
         val w = cmd.optDouble("width").toFloat()
         val h = cmd.optDouble("height").toFloat()
-        val color = parseColor(cmd.optString("color", "#000000"))
-        val opacity = cmd.optDouble("opacity", 1.0)
+        val colorStr = cmd.optString("color", "")
+        if (colorStr.isEmpty()) return
 
+        val opacity = cmd.optDouble("opacity", 1.0)
         val needsLayer = opacity < 1.0
         if (needsLayer) {
             canvas.saveLayerAlpha(null, (opacity * 255).toInt())
         }
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color
+            color = parseColor(colorStr)
             style = Paint.Style.FILL
         }
 
-        val borderRadius = cmd.opt("borderRadius")
-        if (borderRadius is Number && borderRadius.toFloat() > 0) {
-            val r = borderRadius.toFloat()
-            canvas.drawRoundRect(x, y, x + w, y + h, r, r, paint)
+        val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
+        if (borderRadius > 0) {
+            canvas.drawRoundRect(x, y, x + w, y + h, borderRadius, borderRadius, paint)
         } else {
             canvas.drawRect(x, y, x + w, y + h, paint)
         }
@@ -101,19 +99,22 @@ class GlyphisRenderView(context: Context) : View(context) {
     private fun drawText(canvas: Canvas, cmd: JSONObject) {
         val x = cmd.optDouble("x").toFloat()
         val y = cmd.optDouble("y").toFloat()
-        val maxWidth = cmd.optDouble("maxWidth", Double.MAX_VALUE).toFloat()
         val text = cmd.optString("text", "")
-        val color = parseColor(cmd.optString("color", "#000000"))
-        val fontSize = cmd.optDouble("fontSize", 14.0).toFloat()
-        val fontWeight = cmd.optString("fontWeight", "normal")
-        val textAlign = cmd.optString("textAlign", "left")
-        val lineHeight = cmd.optDouble("lineHeight", (fontSize * 1.2).toDouble()).toFloat()
-        val opacity = cmd.optDouble("opacity", 1.0)
+        val colorStr = cmd.optString("color", "")
+        if (colorStr.isEmpty() || text.isEmpty()) return
+        val fontSize = cmd.optDouble("fontSize").toFloat()
 
+        val maxWidth = cmd.optDouble("maxWidth", Double.MAX_VALUE).toFloat()
+
+        val opacity = cmd.optDouble("opacity", 1.0)
         val needsLayer = opacity < 1.0
         if (needsLayer) {
             canvas.saveLayerAlpha(null, (opacity * 255).toInt())
         }
+
+        val fontWeight = cmd.optString("fontWeight", "normal")
+        val textAlign = cmd.optString("textAlign", "left")
+        val lineHeight = fontSize * 1.2f
 
         val typeface = when (fontWeight) {
             "bold", "700" -> Typeface.DEFAULT_BOLD
@@ -121,8 +122,8 @@ class GlyphisRenderView(context: Context) : View(context) {
         }
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color
-            this.textSize = fontSize
+            color = parseColor(colorStr)
+            textSize = fontSize
             this.typeface = typeface
             this.textAlign = when (textAlign) {
                 "center" -> Paint.Align.CENTER
@@ -168,45 +169,48 @@ class GlyphisRenderView(context: Context) : View(context) {
         val y = cmd.optDouble("y").toFloat()
         val w = cmd.optDouble("width").toFloat()
         val h = cmd.optDouble("height").toFloat()
-        val widths = cmd.optJSONArray("widths") ?: return
-        val color = parseColor(cmd.optString("color", "#000000"))
-        val opacity = cmd.optDouble("opacity", 1.0)
+        val colorStr = cmd.optString("color", "")
+        if (colorStr.isEmpty()) return
 
+        val widths = cmd.optJSONArray("widths") ?: return
+        if (widths.length() != 4) return
+        val tw = widths.optDouble(0).toFloat()
+        val rw = widths.optDouble(1).toFloat()
+        val bw = widths.optDouble(2).toFloat()
+        val lw = widths.optDouble(3).toFloat()
+
+        val opacity = cmd.optDouble("opacity", 1.0)
         val needsLayer = opacity < 1.0
         if (needsLayer) {
             canvas.saveLayerAlpha(null, (opacity * 255).toInt())
         }
 
+        val borderColor = parseColor(colorStr)
+
         fun drawLine(x1: Float, y1: Float, x2: Float, y2: Float, strokeWidth: Float) {
             if (strokeWidth <= 0) return
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                this.color = color
+                color = borderColor
                 this.strokeWidth = strokeWidth
                 style = Paint.Style.STROKE
             }
             canvas.drawLine(x1, y1, x2, y2, paint)
         }
 
-        val tw = widths.optDouble(0).toFloat()
-        val rw = widths.optDouble(1).toFloat()
-        val bw = widths.optDouble(2).toFloat()
-        val lw = widths.optDouble(3).toFloat()
-
-        val borderRadius = cmd.opt("borderRadius")
-        if (borderRadius is Number && borderRadius.toFloat() > 0) {
+        val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
+        if (borderRadius > 0) {
             // For rounded borders, draw as a single stroked round rect using the max border width
             val maxWidth = maxOf(tw, rw, bw, lw)
             if (maxWidth > 0) {
-                val r = borderRadius.toFloat()
                 val half = maxWidth / 2
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    this.color = color
+                    color = borderColor
                     this.strokeWidth = maxWidth
                     style = Paint.Style.STROKE
                 }
                 canvas.drawRoundRect(
                     x + half, y + half, x + w - half, y + h - half,
-                    r, r, paint
+                    borderRadius, borderRadius, paint
                 )
             }
         } else {
@@ -258,6 +262,12 @@ class GlyphisRenderView(context: Context) : View(context) {
 
         // Handle hex
         if (h.startsWith("#")) h = h.substring(1)
+
+        // 3-char hex shorthand (#FFF -> #FFFFFF)
+        if (h.length == 3) {
+            h = "${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}"
+        }
+
         return try {
             Color.parseColor("#$h")
         } catch (_: Exception) {
@@ -271,6 +281,10 @@ class GlyphisRenderView(context: Context) : View(context) {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 onTouch?.invoke("pointerdown", event.x / density, event.y / density)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                onTouch?.invoke("pointermove", event.x / density, event.y / density)
                 return true
             }
             MotionEvent.ACTION_UP -> {
