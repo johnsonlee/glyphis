@@ -38,6 +38,9 @@ export interface RecyclerListProps<T> {
  *
  * Scrolling is driven externally through the RecyclerListHandle exposed
  * via the `ref` callback: scrollTo, scrollToIndex, pageDown, pageUp.
+ *
+ * Physics: momentum scrolling with friction on drag release, rubber-band
+ * overscroll with spring snap-back.
  */
 export function RecyclerList<T>(props: RecyclerListProps<T>): any {
   var scrollSignal = createSignal(0);
@@ -68,7 +71,9 @@ export function RecyclerList<T>(props: RecyclerListProps<T>): any {
     return offset;
   }
 
+  // -- Public scrollTo: clamps, no rubber-band, no momentum --
   function scrollTo(offset: number): void {
+    stopMomentum();
     var clamped = clampOffset(offset);
     setScrollOffset(clamped);
     if (props.onScroll) props.onScroll(clamped);
@@ -108,7 +113,10 @@ export function RecyclerList<T>(props: RecyclerListProps<T>): any {
   var startIndex = createMemo(function () {
     // Read dataRef to retrigger when data array changes
     dataRef();
-    var idx = Math.floor(scrollOffset() / props.itemHeight) - BUFFER;
+    var offset = scrollOffset();
+    // Clamp negative offsets (from overscroll) to 0 for index calculation
+    if (offset < 0) offset = 0;
+    var idx = Math.floor(offset / props.itemHeight) - BUFFER;
     if (idx < 0) return 0;
     return idx;
   });
@@ -169,24 +177,178 @@ export function RecyclerList<T>(props: RecyclerListProps<T>): any {
 
   var containerStyle = buildContainerStyle();
 
+  // -- Scroll physics state --
+  var FRICTION = 0.95;
+  var MIN_VELOCITY = 0.5;
+  var MAX_OVERSCROLL = 100;
+  var RUBBER_BAND_FACTOR = 0.3;
+  var SPRING_STIFFNESS = 0.15;
+  var SPRING_DAMPING = 0.75;
+
+  var momentumAnimId: any = null;
+
+  // Velocity tracking during drag
+  var lastMoveY: number = 0;
+  var lastMoveTime: number = 0;
+  var velocityY: number = 0;
+
   // -- Drag-to-scroll state --
   var dragStartY: number = 0;
   var dragStartOffset: number = 0;
 
+  function stopMomentum(): void {
+    if (momentumAnimId != null) {
+      clearTimeout(momentumAnimId);
+      momentumAnimId = null;
+    }
+  }
+
+  /**
+   * Apply scroll offset with rubber-band resistance at the edges.
+   * Only used during drag — programmatic scrollTo clamps instead.
+   */
+  function scrollToWithRubberBand(target: number): void {
+    var max = getMaxScroll();
+    if (target < 0) {
+      // Rubber-band: resistance increases with distance
+      target = target * RUBBER_BAND_FACTOR;
+    } else if (target > max) {
+      var over = target - max;
+      target = max + over * RUBBER_BAND_FACTOR;
+    }
+    setScrollOffset(target);
+    if (props.onScroll) props.onScroll(target);
+  }
+
+  /**
+   * Start momentum (inertia) animation after drag release.
+   * velocity is in px/frame (~16ms), positive = scroll offset increasing.
+   */
+  function startMomentum(velocity: number): void {
+    stopMomentum();
+
+    function tick(): void {
+      velocity = velocity * FRICTION;
+
+      if (Math.abs(velocity) < MIN_VELOCITY) {
+        velocity = 0;
+        // If overscrolled, snap back
+        snapBack();
+        return;
+      }
+
+      var newOffset = scrollOffset() + velocity;
+
+      // Rubber-band if overscrolling during momentum
+      var max = getMaxScroll();
+      if (newOffset < 0 || newOffset > max) {
+        // Reduce velocity faster when overscrolling
+        velocity = velocity * 0.7;
+        // Clamp overscroll extent
+        if (newOffset < -MAX_OVERSCROLL) newOffset = -MAX_OVERSCROLL;
+        if (newOffset > max + MAX_OVERSCROLL) newOffset = max + MAX_OVERSCROLL;
+      }
+
+      setScrollOffset(newOffset);
+      if (props.onScroll) props.onScroll(newOffset);
+
+      momentumAnimId = setTimeout(tick, 16);
+    }
+
+    tick();
+  }
+
+  /**
+   * If the current offset is past the edges, animate back with a spring.
+   */
+  function snapBack(): void {
+    var offset = scrollOffset();
+    var max = getMaxScroll();
+    if (offset < 0) {
+      startSnapAnimation(0);
+    } else if (offset > max) {
+      startSnapAnimation(max);
+    }
+  }
+
+  /**
+   * Spring animation to snap scroll offset back to a target value.
+   */
+  function startSnapAnimation(target: number): void {
+    stopMomentum();
+    var springVelocity = 0;
+
+    function tick(): void {
+      var current = scrollOffset();
+      var force = (target - current) * SPRING_STIFFNESS;
+      springVelocity = (springVelocity + force) * SPRING_DAMPING;
+      var next = current + springVelocity;
+
+      if (Math.abs(next - target) < 0.5 && Math.abs(springVelocity) < 0.5) {
+        setScrollOffset(target);
+        if (props.onScroll) props.onScroll(target);
+        momentumAnimId = null;
+        return;
+      }
+
+      setScrollOffset(next);
+      if (props.onScroll) props.onScroll(next);
+      momentumAnimId = setTimeout(tick, 16);
+    }
+
+    tick();
+  }
+
   function handleScrollDragStart(x: number, y: number): void {
+    // Stop any active momentum or snap animation
+    stopMomentum();
+
     dragStartY = y;
     dragStartOffset = scrollOffset();
+
+    // Reset velocity tracking
+    lastMoveY = y;
+    lastMoveTime = Date.now();
+    velocityY = 0;
   }
 
   function handlePointerMove(x: number, y: number): void {
+    // Track velocity
+    var now = Date.now();
+    var dt = now - lastMoveTime;
+    if (dt > 0) {
+      velocityY = (y - lastMoveY) / dt; // px/ms
+    }
+    lastMoveY = y;
+    lastMoveTime = now;
+
+    // Compute raw target offset (no clamping — allow overscroll with resistance)
     var dy = y - dragStartY;
-    scrollTo(dragStartOffset - dy);
+    var rawTarget = dragStartOffset - dy;
+    scrollToWithRubberBand(rawTarget);
   }
 
   function handleScrollDragEnd(x: number, y: number): void {
-    // Reset drag state; momentum scrolling can be added later
+    // Convert velocityY from px/ms to px/frame (~16ms)
+    // velocityY is in screen-space (positive = finger moving down),
+    // but scroll offset is inverted (finger down = scroll up = offset decreases)
+    var frameVelocity = -velocityY * 16;
+
     dragStartY = 0;
     dragStartOffset = 0;
+
+    // Check if currently overscrolled — if so, snap back immediately
+    var offset = scrollOffset();
+    var max = getMaxScroll();
+    if (offset < 0 || offset > max) {
+      snapBack();
+      return;
+    }
+
+    // Start momentum if velocity is significant
+    if (Math.abs(frameVelocity) > MIN_VELOCITY) {
+      startMomentum(frameVelocity);
+    }
   }
 
   return glyphisRenderer.createComponent(View, {
@@ -199,20 +361,15 @@ export function RecyclerList<T>(props: RecyclerListProps<T>): any {
       var end = endIndex();
       var data = props.data;
       var itemH = props.itemHeight;
-      var items: any[] = [];
       var visibleCount = end - start;
+      var offset = scrollOffset();
 
-      // Top spacer
-      var spacerHeight = start * itemH - scrollOffset();
-      if (spacerHeight > 0) {
-        items.push(
-          glyphisRenderer.createComponent(View, {
-            style: { height: spacerHeight } as Style,
-          })
-        );
-      }
+      // Sub-row pixel offset: how far the content is shifted within the
+      // current top row. This produces smooth pixel-level scrolling.
+      var subRowOffset = start * itemH - offset;
 
       // Assign data to slot signals — nodes update reactively, no recreation
+      var slotNodes: any[] = [];
       for (var i = 0; i < poolSize; i++) {
         var slot = slots[i];
         if (i < visibleCount) {
@@ -220,13 +377,21 @@ export function RecyclerList<T>(props: RecyclerListProps<T>): any {
           slot.itemSignal[1](data[dataIndex]);
           slot.indexSignal[1](dataIndex);
           slot.activeSignal[1](true);
-          items.push(slot.node);
+          slotNodes.push(slot.node);
         } else {
           slot.activeSignal[1](false);
         }
       }
 
-      return items;
+      // Wrap all visible items in a View shifted by the sub-row offset.
+      // position:relative + top moves the view visually without affecting layout.
+      return glyphisRenderer.createComponent(View, {
+        style: {
+          position: 'relative' as const,
+          top: subRowOffset,
+        } as Style,
+        children: slotNodes,
+      });
     },
   });
 }
