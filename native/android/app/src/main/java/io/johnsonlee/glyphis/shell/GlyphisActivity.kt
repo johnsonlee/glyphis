@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.view.Window
 import android.view.WindowManager
+import android.widget.FrameLayout
 
 class GlyphisActivity : Activity() {
     private lateinit var renderView: GlyphisRenderView
@@ -17,10 +18,15 @@ class GlyphisActivity : Activity() {
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
 
+        val container = FrameLayout(this)
         renderView = GlyphisRenderView(this)
-        setContentView(renderView)
+        container.addView(renderView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        setContentView(container)
 
-        runtime = GlyphisRuntime(this, renderView)
+        runtime = GlyphisRuntime(this, renderView, container)
 
         // Defer loadBundle until the view is laid out so getViewportSize()
         // returns real dimensions instead of 0x0.

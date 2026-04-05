@@ -1,10 +1,19 @@
-import type { Platform, RenderCommand, InputEvent } from '../types';
+import type { Platform, RenderCommand, InputEvent, TextInputConfig } from '../types';
 
 declare const __glyphis_native: {
-  submitRenderCommands(packed: string): void;
+  submitRenderCommands(commands: any): void;
   measureText(text: string, fontSize: number, fontFamily: string, fontWeight: string): { width: number; height: number };
   getViewportSize(): { width: number; height: number };
   loadImage(imageId: string, url: string): void;
+  showTextInput(
+    inputId: string, x: number, y: number, width: number, height: number,
+    value: string, placeholder: string, fontSize: number,
+    color: string, placeholderColor: string,
+    keyboardType: string, returnKeyType: string,
+    secureTextEntry: boolean, multiline: boolean, maxLength: number
+  ): void;
+  updateTextInput(inputId: string, x: number, y: number, width: number, height: number): void;
+  hideTextInput(inputId: string): void;
   platform: 'ios' | 'android';
 };
 
@@ -27,7 +36,7 @@ export function createNativePlatform(): NativePlatform {
     },
 
     render(commands: RenderCommand[]) {
-      __glyphis_native.submitRenderCommands(JSON.stringify(commands));
+      __glyphis_native.submitRenderCommands(commands);
     },
 
     getViewport() {
@@ -35,10 +44,22 @@ export function createNativePlatform(): NativePlatform {
     },
 
     onInput(callback: (event: InputEvent) => void) {
-      (globalThis as any).__glyphis_handleTouch = (type: string, x: number, y: number) => {
+      (globalThis as any).__glyphis_handleTouch = function(type: string, x: number, y: number) {
         if (type === 'pointerdown' || type === 'pointerup' || type === 'pointermove') {
-          callback({ type, x, y } as any);
+          callback({ type: type, x: x, y: y } as any);
         }
+      };
+      (globalThis as any).__glyphis_onTextChange = function(inputId: string, text: string) {
+        callback({ type: 'textchange', inputId: inputId, text: text });
+      };
+      (globalThis as any).__glyphis_onTextSubmit = function(inputId: string) {
+        callback({ type: 'textsubmit', inputId: inputId });
+      };
+      (globalThis as any).__glyphis_onTextFocus = function(inputId: string) {
+        callback({ type: 'textfocus', inputId: inputId });
+      };
+      (globalThis as any).__glyphis_onTextBlur = function(inputId: string) {
+        callback({ type: 'textblur', inputId: inputId });
       };
     },
 
@@ -50,6 +71,30 @@ export function createNativePlatform(): NativePlatform {
       (globalThis as any).__glyphis_onImageLoaded = function(id: string, w: number, h: number) {
         callback(id, w, h);
       };
+    },
+
+    showTextInput(config: TextInputConfig) {
+      __glyphis_native.showTextInput(
+        config.inputId, config.x, config.y, config.width, config.height,
+        config.value, config.placeholder, config.fontSize,
+        config.color, config.placeholderColor,
+        config.keyboardType, config.returnKeyType,
+        config.secureTextEntry, config.multiline, config.maxLength
+      );
+    },
+
+    updateTextInput(inputId: string, config: Partial<TextInputConfig>) {
+      __glyphis_native.updateTextInput(
+        inputId,
+        config.x != null ? config.x : -1,
+        config.y != null ? config.y : -1,
+        config.width != null ? config.width : -1,
+        config.height != null ? config.height : -1
+      );
+    },
+
+    hideTextInput(inputId: string) {
+      __glyphis_native.hideTextInput(inputId);
     },
 
     onViewportChange(callback: () => void) {

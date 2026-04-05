@@ -38,29 +38,73 @@ const mockCtx: Record<string, any> = {
   lineWidth: 1,
 };
 
+var mockParentElement = {
+  style: {} as Record<string, string>,
+  appendChild: mock(function (child: any) {
+    child.parentElement = mockParentElement;
+  }),
+  removeChild: mock(function () {}),
+};
+
 const mockCanvas = {
-  getContext: mock((type: string) => {
+  getContext: mock(function (type: string) {
     if (type === '2d') return mockCtx;
     return null;
   }),
-  getBoundingClientRect: mock(() => ({ width: 390, height: 844, left: 0, top: 0 })),
+  getBoundingClientRect: mock(function () { return { width: 390, height: 844, left: 0, top: 0 }; }),
   width: 0,
   height: 0,
-  addEventListener: mock((event: string, handler: Function) => {
+  addEventListener: mock(function (event: string, handler: Function) {
     if (!canvasListeners[event]) canvasListeners[event] = [];
     canvasListeners[event].push(handler);
   }),
+  parentElement: mockParentElement,
 };
 
 // Mock document.createElement for the measure canvas
 const mockMeasureCanvas = {
-  getContext: mock(() => mockMeasureCtx),
+  getContext: mock(function () { return mockMeasureCtx; }),
 };
 
+// Track created DOM elements for TextInput tests
+var createdElements: any[] = [];
+
+function createMockElement(tag: string): any {
+  var listeners: Record<string, Function[]> = {};
+  var el = {
+    tagName: tag.toUpperCase(),
+    type: '',
+    value: '',
+    placeholder: '',
+    inputMode: '',
+    maxLength: -1,
+    style: {} as Record<string, string>,
+    parentElement: null as any,
+    focus: mock(function () {
+      // Fire focus event listeners
+      var fns = listeners['focus'];
+      if (fns) { for (var i = 0; i < fns.length; i++) fns[i](); }
+    }),
+    blur: mock(function () {}),
+    addEventListener: function (event: string, handler: Function) {
+      if (!listeners[event]) listeners[event] = [];
+      listeners[event].push(handler);
+    },
+    removeChild: mock(function () {}),
+    _listeners: listeners,
+    _fireEvent: function (eventName: string, eventObj?: any) {
+      var fns = listeners[eventName];
+      if (fns) { for (var i = 0; i < fns.length; i++) fns[i](eventObj); }
+    },
+  };
+  createdElements.push(el);
+  return el;
+}
+
 (globalThis as any).document = {
-  createElement: mock((tag: string) => {
+  createElement: mock(function (tag: string) {
     if (tag === 'canvas') return mockMeasureCanvas;
-    return {};
+    return createMockElement(tag);
   }),
 };
 
@@ -72,8 +116,9 @@ import { createWebPlatform } from '../src/platform/web';
 
 function resetAllMocks() {
   for (const key of Object.keys(mockCtx)) {
-    if (typeof mockCtx[key]?.mockClear === 'function') {
-      mockCtx[key].mockClear();
+    var val = mockCtx[key];
+    if (val && typeof val.mockClear === 'function') {
+      val.mockClear();
     }
   }
   mockMeasureCtx.measureText.mockClear();
@@ -84,6 +129,10 @@ function resetAllMocks() {
   mockCanvas.getContext.mockClear();
   mockCanvas.getContext.mockReturnValue(mockCtx);
   canvasListeners = {};
+  createdElements = [];
+  mockParentElement.appendChild.mockClear();
+  mockParentElement.removeChild.mockClear();
+  mockParentElement.style = {};
   // Reset mutable ctx properties
   mockCtx.font = '';
   mockCtx.fillStyle = '';
@@ -653,5 +702,377 @@ describe('render image commands', () => {
     ]);
 
     expect(mockCtx.drawImage).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// showTextInput / updateTextInput / hideTextInput
+// ---------------------------------------------------------------------------
+
+describe('showTextInput', function () {
+  test('creates DOM input element', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-1',
+      x: 10, y: 20, width: 200, height: 40,
+      value: 'hello',
+      placeholder: 'Type here',
+      fontSize: 16,
+      color: '#000000',
+      placeholderColor: '#999999',
+      keyboardType: 'default',
+      returnKeyType: 'done',
+      secureTextEntry: false,
+      multiline: false,
+      maxLength: 0,
+    });
+
+    // Should have created an input element
+    var inputEl = createdElements.find(function (el) { return el.tagName === 'INPUT'; });
+    expect(inputEl).toBeDefined();
+    expect(inputEl.value).toBe('hello');
+    expect(inputEl.placeholder).toBe('Type here');
+    expect(inputEl.type).toBe('text');
+    expect(inputEl.style.left).toBe('10px');
+    expect(inputEl.style.top).toBe('20px');
+    expect(inputEl.style.width).toBe('200px');
+    expect(inputEl.style.height).toBe('40px');
+    expect(inputEl.style.fontSize).toBe('16px');
+    expect(inputEl.focus).toHaveBeenCalled();
+    expect(mockParentElement.appendChild).toHaveBeenCalled();
+  });
+
+  test('creates textarea for multiline', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-ml',
+      x: 0, y: 0, width: 200, height: 100,
+      value: '',
+      placeholder: 'Bio',
+      fontSize: 14,
+      color: '#000',
+      placeholderColor: '#999',
+      keyboardType: 'default',
+      returnKeyType: 'done',
+      secureTextEntry: false,
+      multiline: true,
+      maxLength: 0,
+    });
+
+    var textarea = createdElements.find(function (el) { return el.tagName === 'TEXTAREA'; });
+    expect(textarea).toBeDefined();
+  });
+
+  test('sets password type for secureTextEntry', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-pw',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '',
+      placeholder: 'Password',
+      fontSize: 14,
+      color: '#000',
+      placeholderColor: '#999',
+      keyboardType: 'default',
+      returnKeyType: 'done',
+      secureTextEntry: true,
+      multiline: false,
+      maxLength: 0,
+    });
+
+    var inputEl = createdElements.find(function (el) { return el.tagName === 'INPUT'; });
+    expect(inputEl).toBeDefined();
+    expect(inputEl.type).toBe('password');
+  });
+
+  test('sets inputMode for keyboard types', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+
+    platform.showTextInput({
+      inputId: 'ti-num',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'number-pad', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+    var numEl = createdElements[createdElements.length - 1];
+    expect(numEl.inputMode).toBe('numeric');
+  });
+
+  test('sets inputMode for decimal-pad', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+
+    platform.showTextInput({
+      inputId: 'ti-dec',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'decimal-pad', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+    var decEl = createdElements[createdElements.length - 1];
+    expect(decEl.inputMode).toBe('decimal');
+  });
+
+  test('sets inputMode for email-address', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+
+    platform.showTextInput({
+      inputId: 'ti-email',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'email-address', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+    var emailEl = createdElements[createdElements.length - 1];
+    expect(emailEl.inputMode).toBe('email');
+  });
+
+  test('sets maxLength when greater than 0', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-maxlen',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 100,
+    });
+    var el = createdElements[createdElements.length - 1];
+    expect(el.maxLength).toBe(100);
+  });
+
+  test('existing input gets focused instead of creating new one', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    var config = {
+      inputId: 'ti-dup',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    };
+
+    platform.showTextInput(config);
+    var countAfterFirst = createdElements.length;
+
+    // Call again with same inputId
+    platform.showTextInput(config);
+    // Should not create a new element
+    expect(createdElements.length).toBe(countAfterFirst);
+  });
+
+  test('input events fire textchange callback', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    platform.showTextInput({
+      inputId: 'ti-evt',
+      x: 0, y: 0, width: 200, height: 40,
+      value: 'initial', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    inputEl.value = 'updated';
+    inputEl._fireEvent('input');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textchange');
+    expect(receivedEvent.inputId).toBe('ti-evt');
+    expect(receivedEvent.text).toBe('updated');
+  });
+
+  test('focus event fires textfocus callback', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    platform.showTextInput({
+      inputId: 'ti-focus-evt',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    inputEl._fireEvent('focus');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textfocus');
+    expect(receivedEvent.inputId).toBe('ti-focus-evt');
+  });
+
+  test('blur event fires textblur callback', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    platform.showTextInput({
+      inputId: 'ti-blur-evt',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    inputEl._fireEvent('blur');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textblur');
+    expect(receivedEvent.inputId).toBe('ti-blur-evt');
+  });
+
+  test('Enter key fires textsubmit for non-multiline', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    platform.showTextInput({
+      inputId: 'ti-submit',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    inputEl._fireEvent('keydown', { key: 'Enter' });
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textsubmit');
+    expect(receivedEvent.inputId).toBe('ti-submit');
+  });
+
+  test('Enter key does NOT fire textsubmit for multiline', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    platform.showTextInput({
+      inputId: 'ti-ml-enter',
+      x: 0, y: 0, width: 200, height: 100,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: true, maxLength: 0,
+    });
+
+    var textarea = createdElements[createdElements.length - 1];
+    textarea._fireEvent('keydown', { key: 'Enter' });
+
+    // For multiline, Enter should not trigger textsubmit
+    // (receivedEvent may be null or not textsubmit)
+    if (receivedEvent) {
+      expect(receivedEvent.type).not.toBe('textsubmit');
+    }
+  });
+
+  test('sets parent position to relative', function () {
+    mockParentElement.style = {};
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-parent',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    expect(mockParentElement.style.position).toBe('relative');
+  });
+});
+
+describe('updateTextInput', function () {
+  test('updates position of existing input', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-update',
+      x: 10, y: 20, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    platform.updateTextInput('ti-update', { x: 50, y: 60, width: 300, height: 50 });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    expect(inputEl.style.left).toBe('50px');
+    expect(inputEl.style.top).toBe('60px');
+    expect(inputEl.style.width).toBe('300px');
+    expect(inputEl.style.height).toBe('50px');
+  });
+
+  test('updates value of existing input', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-update-val',
+      x: 0, y: 0, width: 200, height: 40,
+      value: 'old', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    platform.updateTextInput('ti-update-val', { value: 'new' });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    expect(inputEl.value).toBe('new');
+  });
+
+  test('does nothing for nonexistent input', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    expect(function () {
+      platform.updateTextInput('nonexistent', { x: 100 });
+    }).not.toThrow();
+  });
+});
+
+describe('hideTextInput', function () {
+  test('removes element from DOM', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.showTextInput({
+      inputId: 'ti-hide',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+
+    var inputEl = createdElements[createdElements.length - 1];
+    platform.hideTextInput('ti-hide');
+
+    expect(inputEl.blur).toHaveBeenCalled();
+    // After hiding, showing again should create a new element
+    var countBefore = createdElements.length;
+    platform.showTextInput({
+      inputId: 'ti-hide',
+      x: 0, y: 0, width: 200, height: 40,
+      value: '', placeholder: '', fontSize: 14,
+      color: '#000', placeholderColor: '#999',
+      keyboardType: 'default', returnKeyType: 'done',
+      secureTextEntry: false, multiline: false, maxLength: 0,
+    });
+    expect(createdElements.length).toBe(countBefore + 1);
+  });
+
+  test('does nothing for nonexistent input', function () {
+    var platform = createWebPlatform(mockCanvas as any);
+    expect(function () {
+      platform.hideTextInput('nonexistent');
+    }).not.toThrow();
   });
 });

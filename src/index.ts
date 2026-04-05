@@ -1,5 +1,6 @@
 export { render, glyphisRenderer, scheduleRender } from './renderer';
-export { View, Text, Image, Button } from './components';
+export { View, Text, Image, Button, TextInput } from './components';
+export type { TextInputProps } from './components';
 export { RecyclerList } from './recycler-list';
 export type { RecyclerListProps, RecyclerListHandle } from './recycler-list';
 export { ScrollView } from './scroll-view';
@@ -7,4 +8,4 @@ export type { ScrollViewProps, ScrollViewHandle } from './scroll-view';
 export { createWebPlatform } from './platform/web';
 export { createNativePlatform } from './platform/native';
 export { createSignal, createEffect, createMemo, createRoot, onMount, onCleanup, batch, untrack } from 'solid-js';
-export type { Style, RenderCommand, Platform, InputEvent } from './types';
+export type { Style, RenderCommand, Platform, RenderPlatform, ImagePlatform, TextInputPlatform, InputEvent, TextInputConfig } from './types';

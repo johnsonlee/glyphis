@@ -8,12 +8,20 @@ class GlyphisRenderView: NSView {
     private var needsRender = false
     private var renderTimer: Timer?
 
-    /// Cache of loaded images keyed by imageId (typically the URL).
-    var imageCache: [String: CGImage] = [:]
+    /// Lookup function for decoded images by imageId. Set by GlyphisRuntime.
+    var imageLookup: ((String) -> CGImage?)? = nil
 
     /// Called by GlyphisRuntime when a mouse event occurs.
     /// Parameters: (eventType, x, y)
     var onTouch: ((String, CGFloat, CGFloat) -> Void)?
+
+    /// Active native text input overlays keyed by inputId.
+    private var textInputFields: [String: NSTextField] = [:]
+
+    /// Callback closures for text input events, set by GlyphisRuntime.
+    var onTextChange: ((String, String) -> Void)?
+    var onTextSubmit: ((String) -> Void)?
+    var onTextFocus: ((String) -> Void)?
 
     /// Flip the coordinate system so the origin is at the top-left, matching iOS.
     override var isFlipped: Bool { return true }
@@ -230,7 +238,7 @@ class GlyphisRenderView: NSView {
         guard let imageId = cmd["imageId"] as? String,
               let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
               let w = cgFloat(cmd, "width"), let h = cgFloat(cmd, "height"),
-              let cgImage = imageCache[imageId] else { return }
+              let cgImage = imageLookup?(imageId) else { return }
 
         let resizeMode = (cmd["resizeMode"] as? String) ?? "cover"
         let hasOpacity = cmd["opacity"] != nil
@@ -367,6 +375,70 @@ class GlyphisRenderView: NSView {
         }
     }
 
+    // MARK: - TextInput Overlay
+
+    func showTextInput(
+        inputId: String, x: Double, y: Double, width: Double, height: Double,
+        value: String, placeholder: String, fontSize: Double,
+        color: String, placeholderColor: String,
+        keyboardType: String, returnKeyType: String,
+        secureTextEntry: Bool, multiline: Bool, maxLength: Int
+    ) {
+        // Remove existing if present
+        hideTextInput(inputId: inputId)
+
+        let textField: NSTextField
+        if secureTextEntry {
+            textField = NSSecureTextField()
+        } else {
+            textField = NSTextField()
+        }
+
+        textField.frame = NSRect(x: x, y: y, width: width, height: height)
+        textField.stringValue = value
+        textField.placeholderString = placeholder
+        textField.font = NSFont.systemFont(ofSize: CGFloat(fontSize))
+        textField.textColor = NSColor(cgColor: parseColor(color))
+        textField.isBordered = false
+        textField.backgroundColor = .clear
+        textField.focusRingType = .none
+        textField.delegate = self
+
+        if !placeholderColor.isEmpty {
+            let phColor = NSColor(cgColor: parseColor(placeholderColor)) ?? NSColor.gray
+            textField.placeholderAttributedString = NSAttributedString(
+                string: placeholder,
+                attributes: [
+                    .foregroundColor: phColor,
+                    .font: textField.font!,
+                ]
+            )
+        }
+
+        addSubview(textField)
+        textInputFields[inputId] = textField
+
+        window?.makeFirstResponder(textField)
+
+        // Fire focus callback
+        onTextFocus?(inputId)
+    }
+
+    func updateTextInput(inputId: String, x: Double, y: Double, width: Double, height: Double) {
+        guard let field = textInputFields[inputId] else { return }
+        if x >= 0 && y >= 0 && width >= 0 && height >= 0 {
+            field.frame = NSRect(x: x, y: y, width: width, height: height)
+        }
+    }
+
+    func hideTextInput(inputId: String) {
+        if let field = textInputFields[inputId] {
+            field.removeFromSuperview()
+            textInputFields.removeValue(forKey: inputId)
+        }
+    }
+
+
     // MARK: - Mouse Handling
 
     override func mouseDown(with event: NSEvent) {
@@ -382,5 +454,24 @@ class GlyphisRenderView: NSView {
     override func mouseUp(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         onTouch?("pointerup", p.x, p.y)
+    }
+}
+
+// MARK: - NSTextFieldDelegate
+
+extension GlyphisRenderView: NSTextFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else { return }
+        let inputId = textInputFields.first(where: { $0.value === field })?.key ?? ""
+        onTextChange?(inputId, field.stringValue)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            let inputId = textInputFields.first(where: { $0.value === control as? NSTextField })?.key ?? ""
+            onTextSubmit?(inputId)
+            return true
+        }
+        return false
     }
 }

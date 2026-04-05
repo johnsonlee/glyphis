@@ -1,7 +1,7 @@
 import { describe, test, expect, mock } from 'bun:test';
 import { createSignal } from 'solid-js';
-import { render, glyphisRenderer } from '../src/renderer';
-import { View, Text, Image, Button } from '../src/components';
+import { render, glyphisRenderer, textInputRegistry } from '../src/renderer';
+import { View, Text, Image, Button, TextInput } from '../src/components';
 import type { Platform } from '../src/types';
 import type { GlyphisNode } from '../src/node';
 
@@ -13,6 +13,9 @@ function createMockPlatform(): Platform {
     onInput: function () {},
     loadImage: function () {},
     onImageLoaded: function () {},
+    showTextInput: function () {},
+    updateTextInput: function () {},
+    hideTextInput: function () {},
   };
 }
 
@@ -484,6 +487,367 @@ describe('Button component', () => {
     expect((btnNode!.style as any).marginTop).toBe(10);
     // Base style should still be present
     expect(btnNode!.style.borderRadius).toBe(4);
+    dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TextInput component
+// ---------------------------------------------------------------------------
+
+describe('TextInput component', function () {
+  test('creates a view node with textInputId', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Type here' });
+      return inputNode;
+    }, platform);
+
+    expect(inputNode).toBeDefined();
+    expect(inputNode!.tag).toBe('view');
+    expect(typeof inputNode!.textInputId).toBe('string');
+    expect(inputNode!.textInputId!.startsWith('input_')).toBe(true);
+    dispose();
+  });
+
+  test('renders placeholder text when no value', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Enter name' });
+      return inputNode;
+    }, platform);
+
+    // The TextInput contains a Text child which contains a __text child
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    expect(textChild).toBeDefined();
+    var textContent = textChild!.children.find(function (c) { return c.tag === '__text'; });
+    expect(textContent).toBeDefined();
+    expect(textContent!.text).toBe('Enter name');
+    dispose();
+  });
+
+  test('renders value text when provided', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ value: 'Hello World', placeholder: 'Type here' });
+      return inputNode;
+    }, platform);
+
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    expect(textChild).toBeDefined();
+    var textContent = textChild!.children.find(function (c) { return c.tag === '__text'; });
+    expect(textContent).toBeDefined();
+    expect(textContent!.text).toBe('Hello World');
+    dispose();
+  });
+
+  test('registers in textInputRegistry on mount', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Test' });
+      return inputNode;
+    }, platform);
+
+    var inputId = inputNode!.textInputId!;
+    expect(textInputRegistry.has(inputId)).toBe(true);
+    var entry = textInputRegistry.get(inputId)!;
+    expect(typeof entry.onChangeText).toBe('function');
+    expect(typeof entry.onFocus).toBe('function');
+    expect(typeof entry.onBlur).toBe('function');
+    expect(typeof entry.onSubmit).toBe('function');
+    dispose();
+  });
+
+  test('unregisters on cleanup', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Test' });
+      return inputNode;
+    }, platform);
+
+    var inputId = inputNode!.textInputId!;
+    expect(textInputRegistry.has(inputId)).toBe(true);
+    dispose();
+    expect(textInputRegistry.has(inputId)).toBe(false);
+  });
+
+  test('secureTextEntry shows bullets', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ value: 'abc', secureTextEntry: true });
+      return inputNode;
+    }, platform);
+
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    var textContent = textChild!.children.find(function (c) { return c.tag === '__text'; });
+    expect(textContent!.text).toBe('\u2022\u2022\u2022');
+    dispose();
+  });
+
+  test('onChangeText callback fires', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+    var changedText = '';
+
+    var dispose = render(function () {
+      inputNode = TextInput({
+        placeholder: 'Test',
+        onChangeText: function (text: string) { changedText = text; },
+      });
+      return inputNode;
+    }, platform);
+
+    var inputId = inputNode!.textInputId!;
+    var entry = textInputRegistry.get(inputId)!;
+    entry.onChangeText!('new value');
+    expect(changedText).toBe('new value');
+    dispose();
+  });
+
+  test('autoFocus triggers showTextInput', async function () {
+    var showCalled = false;
+    var platform = createMockPlatform();
+    platform.showTextInput = function () { showCalled = true; };
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Auto', autoFocus: true });
+      return inputNode;
+    }, platform);
+
+    // autoFocus uses onMount + setTimeout(50ms)
+    await new Promise(function (r) { setTimeout(r, 100); });
+    expect(showCalled).toBe(true);
+    dispose();
+  });
+
+  test('onPress triggers doFocus which calls showTextInput', function () {
+    var showConfig: any = null;
+    var platform = createMockPlatform();
+    platform.showTextInput = function (config: any) { showConfig = config; };
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({
+        value: 'test',
+        placeholder: 'Focus me',
+        keyboardType: 'email-address',
+        secureTextEntry: true,
+        multiline: false,
+        maxLength: 50,
+        returnKeyType: 'go',
+      });
+      return inputNode;
+    }, platform);
+
+    // Trigger the onPress handler on the outer view
+    if (inputNode!.handlers.onPress) {
+      inputNode!.handlers.onPress();
+    }
+
+    expect(showConfig).not.toBeNull();
+    expect(showConfig.inputId).toBe(inputNode!.textInputId);
+    expect(showConfig.value).toBe('test');
+    expect(showConfig.placeholder).toBe('Focus me');
+    expect(showConfig.keyboardType).toBe('email-address');
+    expect(showConfig.secureTextEntry).toBe(true);
+    expect(showConfig.multiline).toBe(false);
+    expect(showConfig.maxLength).toBe(50);
+    expect(showConfig.returnKeyType).toBe('go');
+    dispose();
+  });
+
+  test('editable false prevents doFocus', function () {
+    var showCalled = false;
+    var platform = createMockPlatform();
+    platform.showTextInput = function () { showCalled = true; };
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Readonly', editable: false });
+      return inputNode;
+    }, platform);
+
+    if (inputNode!.handlers.onPress) {
+      inputNode!.handlers.onPress();
+    }
+    expect(showCalled).toBe(false);
+    dispose();
+  });
+
+  test('focused state hides text content', async function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ value: 'hello', placeholder: 'Type' });
+      return inputNode;
+    }, platform);
+
+    var inputId = inputNode!.textInputId!;
+    var entry = textInputRegistry.get(inputId)!;
+
+    // Simulate focus via registry callback
+    entry.onFocus!();
+    await new Promise(function (r) { setTimeout(r, 10); });
+
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    var textContent = textChild!.children.find(function (c) { return c.tag === '__text'; });
+    // When focused, children returns '' to hide text (native overlay handles input)
+    expect(textContent!.text).toBe('');
+    dispose();
+  });
+
+  test('onBlur and onSubmit callbacks fire', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+    var blurCalled = false;
+    var submitCalled = false;
+
+    var dispose = render(function () {
+      inputNode = TextInput({
+        placeholder: 'Test',
+        onBlur: function () { blurCalled = true; },
+        onSubmitEditing: function () { submitCalled = true; },
+      });
+      return inputNode;
+    }, platform);
+
+    var inputId = inputNode!.textInputId!;
+    var entry = textInputRegistry.get(inputId)!;
+    entry.onBlur!();
+    entry.onSubmit!();
+    expect(blurCalled).toBe(true);
+    expect(submitCalled).toBe(true);
+    dispose();
+  });
+
+  test('uncontrolled mode uses defaultValue', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ defaultValue: 'initial', placeholder: 'Type' });
+      return inputNode;
+    }, platform);
+
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    var textContent = textChild!.children.find(function (c) { return c.tag === '__text'; });
+    expect(textContent!.text).toBe('initial');
+    dispose();
+  });
+
+  test('uncontrolled mode updates internal value on change', async function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Uncontrolled' });
+      return inputNode;
+    }, platform);
+
+    var inputId = inputNode!.textInputId!;
+    var entry = textInputRegistry.get(inputId)!;
+    entry.onChangeText!('typed text');
+
+    await new Promise(function (r) { setTimeout(r, 10); });
+
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    var textContent = textChild!.children.find(function (c) { return c.tag === '__text'; });
+    expect(textContent!.text).toBe('typed text');
+    dispose();
+  });
+
+  test('focused state changes border color', async function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Border test' });
+      return inputNode;
+    }, platform);
+
+    // Unfocused: borderColor should be #CCCCCC
+    expect(inputNode!.style.borderColor).toBe('#CCCCCC');
+
+    var inputId = inputNode!.textInputId!;
+    var entry = textInputRegistry.get(inputId)!;
+    entry.onFocus!();
+
+    await new Promise(function (r) { setTimeout(r, 10); });
+
+    expect(inputNode!.style.borderColor).toBe('#2196F3');
+    dispose();
+  });
+
+  test('placeholder color uses placeholderTextColor prop', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Colored', placeholderTextColor: '#FF0000' });
+      return inputNode;
+    }, platform);
+
+    var textChild = inputNode!.children.find(function (c) { return c.tag === 'text'; });
+    expect(textChild!.style.color).toBe('#FF0000');
+    dispose();
+  });
+
+  test('style props merge onto base style', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Styled', style: { marginTop: 20, height: 60 } });
+      return inputNode;
+    }, platform);
+
+    expect((inputNode!.style as any).marginTop).toBe(20);
+    expect((inputNode!.style as any).height).toBe(60);
+    // Base styles still present
+    expect(inputNode!.style.borderRadius).toBe(4);
+    expect(inputNode!.style.backgroundColor).toBe('#FFFFFF');
+    dispose();
+  });
+
+  test('doFocus uses default config values for missing props', function () {
+    var showConfig: any = null;
+    var platform = createMockPlatform();
+    platform.showTextInput = function (config: any) { showConfig = config; };
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({});
+      return inputNode;
+    }, platform);
+
+    if (inputNode!.handlers.onPress) {
+      inputNode!.handlers.onPress();
+    }
+
+    expect(showConfig).not.toBeNull();
+    expect(showConfig.placeholder).toBe('');
+    expect(showConfig.fontSize).toBe(14);
+    expect(showConfig.color).toBe('#000000');
+    expect(showConfig.placeholderColor).toBe('#999999');
+    expect(showConfig.keyboardType).toBe('default');
+    expect(showConfig.returnKeyType).toBe('done');
+    expect(showConfig.secureTextEntry).toBe(false);
+    expect(showConfig.multiline).toBe(false);
+    expect(showConfig.maxLength).toBe(0);
     dispose();
   });
 });

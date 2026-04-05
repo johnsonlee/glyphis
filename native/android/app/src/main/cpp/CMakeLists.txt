@@ -39,6 +39,9 @@ set(YOGA_SOURCES
 
 add_library(glyphis_jsc SHARED
     jsc_bridge.cpp
+    platform_bridge.cpp
+    yoga_bridge.cpp
+    polyfills.cpp
     ${YOGA_SOURCES}
 )
 

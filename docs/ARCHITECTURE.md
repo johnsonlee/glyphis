@@ -114,17 +114,32 @@ Adding a new platform means implementing this interface. The framework core has 
 
 On native platforms, three bridges connect JS to platform capabilities:
 
-1. **`__glyphis_native`** — Platform bridge (measureText, submitRenderCommands, getViewportSize, touch events)
+1. **`__glyphis_native`** — Platform bridge (measureText, submitRenderCommands, getViewportSize, touch events, loadImage, showTextInput/updateTextInput/hideTextInput)
 2. **`__yoga.*`** — Yoga bridge (node lifecycle, style setters, layout calculation, measure callbacks)
 3. **Timer polyfills** — setTimeout/setInterval/queueMicrotask (JSC doesn't provide these natively)
 
-The Yoga bridge uses an ID-based protocol: JS refers to Yoga nodes by integer ID, native maintains the mapping to `YGNodeRef`. Measure callbacks flow from native Yoga back to JS via `__yoga_measure(nodeId, ...)` during `calculateLayout`.
+On Android, the C++ bridge is split into focused files:
+- `jsc_bridge.cpp` — JNI entry points and JSC context setup
+- `platform_bridge.cpp` — `__glyphis_native` functions
+- `yoga_bridge.cpp` — `__yoga` functions
+- `polyfills.cpp` — JS environment polyfills
+- `bridge_common.h` — shared declarations
+
+The Yoga bridge uses an ID-based protocol: JS refers to Yoga nodes by integer ID, native maintains the mapping to `YGNodeRef`. Text measurement happens directly in native (CoreText/Android Paint) without JS callbacks.
+
+The Platform interface is split into focused capabilities:
+- `RenderPlatform` — core rendering (measureText, render, getViewport, onInput)
+- `ImagePlatform` — image loading (loadImage, onImageLoaded)
+- `TextInputPlatform` — text input overlay (showTextInput, updateTextInput, hideTextInput)
+
+## Resolved
+
+- **Text input**: Native overlay text fields (NSTextField/UITextField/EditText) positioned over Canvas. Handles IME, autocorrect, clipboard natively.
+- **Scroll physics**: Friction-based momentum, rubber-band overscroll, spring snap-back. Pixel-level smooth scrolling.
+- **View recycling**: RecyclerList with signal-based slot recycling. 10K rows in 10ms.
+- **Batch measure**: Eliminated JS↔native bridge calls during layout — text measured directly in native C++/ObjC.
 
 ## Open Questions
 
 - **Accessibility**: Single-surface rendering bypasses platform accessibility trees. Needs a strategy before production use.
-- **Text input**: Must implement or bridge to native IME, cursor, selection.
-- **Scroll physics**: Momentum, rubber-banding, overscroll.
 - **GPU rendering**: When to introduce, and whether it changes the architecture.
-- **View recycling**: Virtual lists for large datasets (currently renders all nodes).
-- **Batch measure**: Reduce JS↔native bridge calls during layout (currently one `evaluateScript` per measure).
