@@ -8,6 +8,9 @@ class GlyphisRenderView: NSView {
     private var needsRender = false
     private var renderTimer: Timer?
 
+    /// Cache of loaded images keyed by imageId (typically the URL).
+    var imageCache: [String: CGImage] = [:]
+
     /// Called by GlyphisRuntime when a mouse event occurs.
     /// Parameters: (eventType, x, y)
     var onTouch: ((String, CGFloat, CGFloat) -> Void)?
@@ -50,6 +53,8 @@ class GlyphisRenderView: NSView {
                 drawRect(ctx: ctx, cmd: cmd)
             case "text":
                 drawText(ctx: ctx, cmd: cmd)
+            case "image":
+                drawImage(ctx: ctx, cmd: cmd)
             case "border":
                 drawBorder(ctx: ctx, cmd: cmd)
             case "clip-start":
@@ -219,6 +224,57 @@ class GlyphisRenderView: NSView {
         if hasOpacity {
             ctx.restoreGState()
         }
+    }
+
+    private func drawImage(ctx: CGContext, cmd: [String: Any]) {
+        guard let imageId = cmd["imageId"] as? String,
+              let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
+              let w = cgFloat(cmd, "width"), let h = cgFloat(cmd, "height"),
+              let cgImage = imageCache[imageId] else { return }
+
+        let resizeMode = (cmd["resizeMode"] as? String) ?? "cover"
+        let hasOpacity = cmd["opacity"] != nil
+
+        ctx.saveGState()
+        if hasOpacity { ctx.setAlpha(cgFloat(cmd, "opacity") ?? 1.0) }
+
+        // Clip for borderRadius
+        if let radius = cgFloat(cmd, "borderRadius"), radius > 0 {
+            let path = CGPath(roundedRect: CGRect(x: x, y: y, width: w, height: h),
+                              cornerWidth: radius, cornerHeight: radius, transform: nil)
+            ctx.addPath(path)
+            ctx.clip()
+        }
+
+        let imgW = CGFloat(cgImage.width)
+        let imgH = CGFloat(cgImage.height)
+
+        var destRect: CGRect
+
+        switch resizeMode {
+        case "stretch":
+            destRect = CGRect(x: x, y: y, width: w, height: h)
+        case "contain":
+            let scale = min(w / imgW, h / imgH)
+            let dw = imgW * scale
+            let dh = imgH * scale
+            destRect = CGRect(x: x + (w - dw) / 2, y: y + (h - dh) / 2, width: dw, height: dh)
+        default: // "cover"
+            let scale = max(w / imgW, h / imgH)
+            let dw = imgW * scale
+            let dh = imgH * scale
+            destRect = CGRect(x: x + (w - dw) / 2, y: y + (h - dh) / 2, width: dw, height: dh)
+        }
+
+        // CGContext.draw draws images bottom-up. Since isFlipped=true, flip manually.
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: destRect.origin.y + destRect.height)
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.draw(cgImage, in: CGRect(x: destRect.origin.x, y: 0,
+                                     width: destRect.width, height: destRect.height))
+        ctx.restoreGState()
+
+        ctx.restoreGState()
     }
 
     // MARK: - Helpers

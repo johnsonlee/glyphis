@@ -1,16 +1,18 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, mock } from 'bun:test';
 import { createSignal } from 'solid-js';
 import { render, glyphisRenderer } from '../src/renderer';
-import { View, Text } from '../src/components';
+import { View, Text, Image, Button } from '../src/components';
 import type { Platform } from '../src/types';
 import type { GlyphisNode } from '../src/node';
 
 function createMockPlatform(): Platform {
   return {
-    measureText: () => ({ width: 50, height: 20 }),
-    render: () => {},
-    getViewport: () => ({ width: 390, height: 844 }),
-    onInput: () => {},
+    measureText: function () { return { width: 50, height: 20 }; },
+    render: function () {},
+    getViewport: function () { return { width: 390, height: 844 }; },
+    onInput: function () {},
+    loadImage: function () {},
+    onImageLoaded: function () {},
   };
 }
 
@@ -231,6 +233,257 @@ describe('Reactive behavior', () => {
     const updatedText = textNode!.children.find(c => c.tag === '__text');
     expect(updatedText).toBeDefined();
     expect(updatedText!.text).toBe('World');
+    dispose();
+  });
+});
+
+describe('Image component', () => {
+  test('creates a node with tag image', () => {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/photo.jpg' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode).toBeDefined();
+    expect(imgNode!.tag).toBe('image');
+    dispose();
+  });
+
+  test('sets imageProps on the node', () => {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/photo.jpg', resizeMode: 'contain' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.imageProps).toBeDefined();
+    expect(imgNode!.imageProps!.src).toBe('https://example.com/photo.jpg');
+    expect(imgNode!.imageProps!.imageId).toBe('https://example.com/photo.jpg');
+    expect(imgNode!.imageProps!.resizeMode).toBe('contain');
+    expect(imgNode!.imageProps!.loaded).toBe(false);
+    dispose();
+  });
+
+  test('defaults resizeMode to cover', () => {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/photo.jpg' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.imageProps!.resizeMode).toBe('cover');
+    dispose();
+  });
+
+  test('applies style reactively', async () => {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+    var setWidth: (v: number) => void;
+
+    var dispose = render(function () {
+      var signal = createSignal(100);
+      var width = signal[0];
+      setWidth = signal[1];
+      imgNode = Image({
+        src: 'https://example.com/photo.jpg',
+        get style() { return { width: width(), height: 100 }; },
+      });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.style).toEqual({ width: 100, height: 100 });
+
+    setWidth!(200);
+    await new Promise(function (r) { setTimeout(r, 10); });
+
+    expect(imgNode!.style).toEqual({ width: 200, height: 100 });
+    dispose();
+  });
+
+  test('sets onLoad handler', () => {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+    var handler = function () {};
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/photo.jpg', onLoad: handler });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.handlers['onLoad']).toBe(handler);
+    dispose();
+  });
+});
+
+describe('Button component', () => {
+  test('creates a view with text child', () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click Me', onPress: function () {} });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode).toBeDefined();
+    expect(btnNode!.tag).toBe('view');
+    // Should have at least one child that is a text node
+    var textChild = btnNode!.children.find(function (c) { return c.tag === 'text'; });
+    expect(textChild).toBeDefined();
+    dispose();
+  });
+
+  test('has default backgroundColor', () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () {} });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.style.backgroundColor).toBe('#2196F3');
+    dispose();
+  });
+
+  test('uses custom color when provided', () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () {}, color: '#FF0000' });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.style.backgroundColor).toBe('#FF0000');
+    dispose();
+  });
+
+  test('disabled state sets opacity to 0.4', () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () {}, disabled: true });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.style.opacity).toBe(0.4);
+    dispose();
+  });
+
+  test('press feedback changes opacity', async () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () {} });
+      return btnNode;
+    }, platform);
+
+    // Initial opacity should be 1
+    expect(btnNode!.style.opacity).toBe(1);
+
+    // Simulate pressIn
+    if (btnNode!.handlers.onPressIn) {
+      btnNode!.handlers.onPressIn();
+    }
+
+    await new Promise(function (r) { setTimeout(r, 10); });
+
+    // Opacity should be 0.6 when pressed
+    expect(btnNode!.style.opacity).toBe(0.6);
+
+    // Simulate pressOut
+    if (btnNode!.handlers.onPressOut) {
+      btnNode!.handlers.onPressOut();
+    }
+
+    await new Promise(function (r) { setTimeout(r, 10); });
+
+    // Opacity should be back to 1
+    expect(btnNode!.style.opacity).toBe(1);
+    dispose();
+  });
+
+  test('onPress fires when not disabled', () => {
+    var platform = createMockPlatform();
+    var pressed = false;
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () { pressed = true; } });
+      return btnNode;
+    }, platform);
+
+    if (btnNode!.handlers.onPress) {
+      btnNode!.handlers.onPress();
+    }
+    expect(pressed).toBe(true);
+    dispose();
+  });
+
+  test('onPress does not fire when disabled', () => {
+    var platform = createMockPlatform();
+    var pressed = false;
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () { pressed = true; }, disabled: true });
+      return btnNode;
+    }, platform);
+
+    if (btnNode!.handlers.onPress) {
+      btnNode!.handlers.onPress();
+    }
+    expect(pressed).toBe(false);
+    dispose();
+  });
+
+  test('onPressIn does not fire when disabled', () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Click', onPress: function () {}, disabled: true });
+      return btnNode;
+    }, platform);
+
+    // initial opacity = 0.4 (disabled)
+    expect(btnNode!.style.opacity).toBe(0.4);
+
+    if (btnNode!.handlers.onPressIn) {
+      btnNode!.handlers.onPressIn();
+    }
+
+    // Should remain 0.4 because setPressed(true) is guarded by !disabled
+    expect(btnNode!.style.opacity).toBe(0.4);
+    dispose();
+  });
+
+  test('merges custom style onto base style', () => {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({
+        title: 'Click',
+        onPress: function () {},
+        style: { marginTop: 10 },
+      });
+      return btnNode;
+    }, platform);
+
+    expect((btnNode!.style as any).marginTop).toBe(10);
+    // Base style should still be present
+    expect(btnNode!.style.borderRadius).toBe(4);
     dispose();
   });
 });

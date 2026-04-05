@@ -7,11 +7,13 @@ import { describe, test, expect, beforeEach, mock } from 'bun:test';
 const mockSubmitRenderCommands = mock(() => {});
 const mockMeasureText = mock(() => ({ width: 50, height: 20 }));
 const mockGetViewportSize = mock(() => ({ width: 390, height: 844 }));
+const mockLoadImage = mock((_id: string, _url: string) => {});
 
 (globalThis as any).__glyphis_native = {
   submitRenderCommands: mockSubmitRenderCommands,
   measureText: mockMeasureText,
   getViewportSize: mockGetViewportSize,
+  loadImage: mockLoadImage,
   platform: 'ios' as const,
 };
 
@@ -23,9 +25,11 @@ beforeEach(() => {
   mockMeasureText.mockReturnValue({ width: 50, height: 20 });
   mockGetViewportSize.mockReset();
   mockGetViewportSize.mockReturnValue({ width: 390, height: 844 });
+  mockLoadImage.mockReset();
   // Clean up globals
   delete (globalThis as any).__glyphis_handleTouch;
   delete (globalThis as any).__glyphis_updateViewport;
+  delete (globalThis as any).__glyphis_onImageLoaded;
 });
 
 // ---------------------------------------------------------------------------
@@ -189,5 +193,55 @@ describe('onViewportChange', () => {
     (globalThis as any).__glyphis_updateViewport();
     (globalThis as any).__glyphis_updateViewport();
     expect(callback).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadImage
+// ---------------------------------------------------------------------------
+
+describe('loadImage', () => {
+  test('delegates to __glyphis_native.loadImage', () => {
+    var platform = createNativePlatform();
+    platform.loadImage('img-1', 'https://example.com/photo.jpg');
+    expect(mockLoadImage).toHaveBeenCalledWith('img-1', 'https://example.com/photo.jpg');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onImageLoaded
+// ---------------------------------------------------------------------------
+
+describe('onImageLoaded', () => {
+  test('registers __glyphis_onImageLoaded global', () => {
+    var platform = createNativePlatform();
+    var callback = mock(function () {});
+    platform.onImageLoaded(callback);
+
+    expect(typeof (globalThis as any).__glyphis_onImageLoaded).toBe('function');
+  });
+
+  test('__glyphis_onImageLoaded dispatches to callback', () => {
+    var platform = createNativePlatform();
+    var callback = mock(function () {});
+    platform.onImageLoaded(callback);
+
+    (globalThis as any).__glyphis_onImageLoaded('img-1', 800, 600);
+    expect(callback).toHaveBeenCalledWith('img-1', 800, 600);
+  });
+
+  test('__glyphis_onImageLoaded with multiple images', () => {
+    var platform = createNativePlatform();
+    var results: Array<{ id: string; w: number; h: number }> = [];
+    platform.onImageLoaded(function (id: string, w: number, h: number) {
+      results.push({ id: id, w: w, h: h });
+    });
+
+    (globalThis as any).__glyphis_onImageLoaded('img-a', 100, 50);
+    (globalThis as any).__glyphis_onImageLoaded('img-b', 200, 150);
+
+    expect(results.length).toBe(2);
+    expect(results[0]).toEqual({ id: 'img-a', w: 100, h: 50 });
+    expect(results[1]).toEqual({ id: 'img-b', w: 200, h: 150 });
   });
 });

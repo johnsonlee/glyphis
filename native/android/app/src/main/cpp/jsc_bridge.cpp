@@ -196,6 +196,42 @@ static JSValueRef js_measureText(
 }
 
 /* ------------------------------------------------------------------ */
+/*  JS callback: __glyphis_native.loadImage(imageId, url)             */
+/* ------------------------------------------------------------------ */
+
+static JSValueRef js_loadImage(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 2) return JSValueMakeUndefined(ctx);
+
+    JSStringRef idStr  = JSValueToStringCopy(ctx, argv[0], NULL);
+    JSStringRef urlStr = JSValueToStringCopy(ctx, argv[1], NULL);
+    char* imageId = JSStringToCString(idStr);
+    char* url     = JSStringToCString(urlStr);
+
+    JNIEnv* env = getJNIEnv();
+    if (env && g_runtime) {
+        jclass    cls    = env->GetObjectClass(g_runtime);
+        jmethodID method = env->GetMethodID(cls,
+            "onLoadImage", "(Ljava/lang/String;Ljava/lang/String;)V");
+        jstring jImageId = env->NewStringUTF(imageId);
+        jstring jUrl     = env->NewStringUTF(url);
+        env->CallVoidMethod(g_runtime, method, jImageId, jUrl);
+        env->DeleteLocalRef(jImageId);
+        env->DeleteLocalRef(jUrl);
+        env->DeleteLocalRef(cls);
+    }
+
+    free(imageId);
+    free(url);
+    JSStringRelease(idStr);
+    JSStringRelease(urlStr);
+
+    return JSValueMakeUndefined(ctx);
+}
+
+/* ------------------------------------------------------------------ */
 /*  JS callback: __glyphis_native.getViewportSize()                   */
 /* ------------------------------------------------------------------ */
 
@@ -648,192 +684,7 @@ static JSValueRef js_yoga_nodeStyleSetGap(
 /*  Yoga bridge: batch style setter                                   */
 /* ------------------------------------------------------------------ */
 
-/* Helper: read a numeric property from a JS object, returns NAN if missing */
-static double js_obj_get_number(JSContextRef ctx, JSObjectRef obj, const char* key) {
-    JSStringRef jsKey = JSStringCreateWithUTF8CString(key);
-    JSValueRef val = JSObjectGetProperty(ctx, obj, jsKey, NULL);
-    JSStringRelease(jsKey);
-    if (JSValueIsUndefined(ctx, val) || JSValueIsNull(ctx, val)) return NAN;
-    return JSValueToNumber(ctx, val, NULL);
-}
 
-/* Helper: read a string property, returns NULL if missing. Caller must free. */
-static char* js_obj_get_string(JSContextRef ctx, JSObjectRef obj, const char* key) {
-    JSStringRef jsKey = JSStringCreateWithUTF8CString(key);
-    JSValueRef val = JSObjectGetProperty(ctx, obj, jsKey, NULL);
-    JSStringRelease(jsKey);
-    if (JSValueIsUndefined(ctx, val) || JSValueIsNull(ctx, val)) return NULL;
-    JSStringRef str = JSValueToStringCopy(ctx, val, NULL);
-    char* cstr = JSStringToCString(str);
-    JSStringRelease(str);
-    return cstr;
-}
-
-/* Helper: apply a dimension value (number, "auto", or "N%") */
-static void apply_dimension(
-    JSContextRef ctx, JSObjectRef obj, const char* key,
-    YGNodeRef node,
-    void (*setVal)(YGNodeRef, float),
-    void (*setPct)(YGNodeRef, float),
-    void (*setAuto)(YGNodeRef))
-{
-    JSStringRef jsKey = JSStringCreateWithUTF8CString(key);
-    JSValueRef val = JSObjectGetProperty(ctx, obj, jsKey, NULL);
-    JSStringRelease(jsKey);
-    if (JSValueIsUndefined(ctx, val) || JSValueIsNull(ctx, val)) return;
-
-    if (JSValueIsString(ctx, val)) {
-        JSStringRef str = JSValueToStringCopy(ctx, val, NULL);
-        char* cstr = JSStringToCString(str);
-        JSStringRelease(str);
-        if (strcmp(cstr, "auto") == 0 && setAuto) {
-            setAuto(node);
-        } else {
-            size_t len = strlen(cstr);
-            if (len > 1 && cstr[len - 1] == '%') {
-                cstr[len - 1] = '\0';
-                setPct(node, (float)atof(cstr));
-            }
-        }
-        free(cstr);
-    } else if (JSValueIsNumber(ctx, val)) {
-        setVal(node, (float)JSValueToNumber(ctx, val, NULL));
-    }
-}
-
-/* Helper: apply a dimension value without auto variant */
-static void apply_dimension_no_auto(
-    JSContextRef ctx, JSObjectRef obj, const char* key,
-    YGNodeRef node,
-    void (*setVal)(YGNodeRef, float),
-    void (*setPct)(YGNodeRef, float))
-{
-    apply_dimension(ctx, obj, key, node, setVal, setPct, NULL);
-}
-
-/* __yoga.nodeStyleSetBatch(nodeId, jsonString) */
-static JSValueRef js_yoga_nodeStyleSetBatch(
-    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
-    size_t argc, const JSValueRef argv[], JSValueRef* exc)
-{
-    if (argc < 2) return JSValueMakeUndefined(ctx);
-    int id = (int)JSValueToNumber(ctx, argv[0], NULL);
-    YGNodeRef node = yoga_get_node(id);
-    if (!node) return JSValueMakeUndefined(ctx);
-
-    /* Parse JSON string into a JS object using JSON.parse */
-    JSObjectRef global = JSContextGetGlobalObject(ctx);
-    JSStringRef jsonName = JSStringCreateWithUTF8CString("JSON");
-    JSObjectRef jsonObj = (JSObjectRef)JSObjectGetProperty(ctx, global, jsonName, NULL);
-    JSStringRelease(jsonName);
-
-    JSStringRef parseName = JSStringCreateWithUTF8CString("parse");
-    JSObjectRef parseFn = (JSObjectRef)JSObjectGetProperty(ctx, jsonObj, parseName, NULL);
-    JSStringRelease(parseName);
-
-    JSValueRef parseArgs[1] = { argv[1] };
-    JSValueRef parseResult = JSObjectCallAsFunction(ctx, parseFn, jsonObj, 1, parseArgs, exc);
-    if (!parseResult || JSValueIsUndefined(ctx, parseResult)) return JSValueMakeUndefined(ctx);
-
-    JSObjectRef style = JSValueToObject(ctx, parseResult, NULL);
-    if (!style) return JSValueMakeUndefined(ctx);
-
-    double v;
-
-    /* Dimensions */
-    apply_dimension(ctx, style, "width", node, YGNodeStyleSetWidth, YGNodeStyleSetWidthPercent, YGNodeStyleSetWidthAuto);
-    apply_dimension(ctx, style, "height", node, YGNodeStyleSetHeight, YGNodeStyleSetHeightPercent, YGNodeStyleSetHeightAuto);
-    apply_dimension_no_auto(ctx, style, "minWidth", node, YGNodeStyleSetMinWidth, YGNodeStyleSetMinWidthPercent);
-    apply_dimension_no_auto(ctx, style, "minHeight", node, YGNodeStyleSetMinHeight, YGNodeStyleSetMinHeightPercent);
-    apply_dimension_no_auto(ctx, style, "maxWidth", node, YGNodeStyleSetMaxWidth, YGNodeStyleSetMaxWidthPercent);
-    apply_dimension_no_auto(ctx, style, "maxHeight", node, YGNodeStyleSetMaxHeight, YGNodeStyleSetMaxHeightPercent);
-
-    /* Flex numeric */
-    v = js_obj_get_number(ctx, style, "flex");
-    if (!isnan(v)) YGNodeStyleSetFlex(node, (float)v);
-    v = js_obj_get_number(ctx, style, "flexGrow");
-    if (!isnan(v)) YGNodeStyleSetFlexGrow(node, (float)v);
-    v = js_obj_get_number(ctx, style, "flexShrink");
-    if (!isnan(v)) YGNodeStyleSetFlexShrink(node, (float)v);
-    apply_dimension(ctx, style, "flexBasis", node, YGNodeStyleSetFlexBasis, YGNodeStyleSetFlexBasisPercent, YGNodeStyleSetFlexBasisAuto);
-
-    /* Flex enums (pre-resolved to int by JS) */
-    v = js_obj_get_number(ctx, style, "flexDirection");
-    if (!isnan(v)) YGNodeStyleSetFlexDirection(node, (YGFlexDirection)(int)v);
-    v = js_obj_get_number(ctx, style, "flexWrap");
-    if (!isnan(v)) YGNodeStyleSetFlexWrap(node, (YGWrap)(int)v);
-
-    /* Alignment enums */
-    v = js_obj_get_number(ctx, style, "justifyContent");
-    if (!isnan(v)) YGNodeStyleSetJustifyContent(node, (YGJustify)(int)v);
-    v = js_obj_get_number(ctx, style, "alignItems");
-    if (!isnan(v)) YGNodeStyleSetAlignItems(node, (YGAlign)(int)v);
-    v = js_obj_get_number(ctx, style, "alignSelf");
-    if (!isnan(v)) YGNodeStyleSetAlignSelf(node, (YGAlign)(int)v);
-    v = js_obj_get_number(ctx, style, "alignContent");
-    if (!isnan(v)) YGNodeStyleSetAlignContent(node, (YGAlign)(int)v);
-
-    /* Padding (keys: padding_<edge>) */
-    {
-        int edges[] = {0, 1, 2, 3, 6, 7, 8};
-        for (int i = 0; i < 7; i++) {
-            char key[16];
-            snprintf(key, sizeof(key), "padding_%d", edges[i]);
-            v = js_obj_get_number(ctx, style, key);
-            if (!isnan(v)) YGNodeStyleSetPadding(node, (YGEdge)edges[i], (float)v);
-        }
-    }
-
-    /* Margin (keys: margin_<edge>) */
-    {
-        int edges[] = {0, 1, 2, 3, 6, 7, 8};
-        for (int i = 0; i < 7; i++) {
-            char key[16];
-            snprintf(key, sizeof(key), "margin_%d", edges[i]);
-            v = js_obj_get_number(ctx, style, key);
-            if (!isnan(v)) YGNodeStyleSetMargin(node, (YGEdge)edges[i], (float)v);
-        }
-    }
-
-    /* Position type */
-    v = js_obj_get_number(ctx, style, "positionType");
-    if (!isnan(v)) YGNodeStyleSetPositionType(node, (YGPositionType)(int)v);
-
-    /* Position edges (keys: position_<edge>) */
-    for (int edge = 0; edge <= 3; edge++) {
-        char key[16];
-        snprintf(key, sizeof(key), "position_%d", edge);
-        v = js_obj_get_number(ctx, style, key);
-        if (!isnan(v)) YGNodeStyleSetPosition(node, (YGEdge)edge, (float)v);
-    }
-
-    /* Border (keys: border_<edge>) */
-    {
-        int edges[] = {0, 1, 2, 3, 8};
-        for (int i = 0; i < 5; i++) {
-            char key[16];
-            snprintf(key, sizeof(key), "border_%d", edges[i]);
-            v = js_obj_get_number(ctx, style, key);
-            if (!isnan(v)) YGNodeStyleSetBorder(node, (YGEdge)edges[i], (float)v);
-        }
-    }
-
-    /* Display / overflow */
-    v = js_obj_get_number(ctx, style, "display");
-    if (!isnan(v)) YGNodeStyleSetDisplay(node, (YGDisplay)(int)v);
-    v = js_obj_get_number(ctx, style, "overflow");
-    if (!isnan(v)) YGNodeStyleSetOverflow(node, (YGOverflow)(int)v);
-
-    /* Gap (keys: gap_<gutter>) */
-    for (int gutter = 0; gutter <= 2; gutter++) {
-        char key[8];
-        snprintf(key, sizeof(key), "gap_%d", gutter);
-        v = js_obj_get_number(ctx, style, key);
-        if (!isnan(v)) YGNodeStyleSetGap(node, (YGGutter)gutter, (float)v);
-    }
-
-    return JSValueMakeUndefined(ctx);
-}
 
 /* ------------------------------------------------------------------ */
 /*  Helper: register a JS function on a JSObjectRef                   */
@@ -938,7 +789,6 @@ static void register_yoga_bridge(JSContextRef ctx, JSObjectRef global) {
     setFunctionProperty(ctx, yoga, "nodeStyleSetGap",              js_yoga_nodeStyleSetGap);
 
     /* Batch style setter */
-    setFunctionProperty(ctx, yoga, "nodeStyleSetBatch",            js_yoga_nodeStyleSetBatch);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1036,6 +886,7 @@ Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeInit(JNIEnv* env, jobject 
     setFunctionProperty(g_context, bridge, "measureText",          js_measureText);
     setFunctionProperty(g_context, bridge, "getViewportSize",      js_getViewportSize);
     setFunctionProperty(g_context, bridge, "scheduleTimer",        js_scheduleTimer);
+    setFunctionProperty(g_context, bridge, "loadImage",            js_loadImage);
     setStringProperty(g_context,   bridge, "platform",             "android");
 
     /* -- Yoga bridge -- */

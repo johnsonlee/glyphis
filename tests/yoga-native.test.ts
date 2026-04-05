@@ -21,6 +21,8 @@ const mockYoga: Record<string, any> = {
   nodeLayoutGetHeight: mock(() => 50),
   nodeMarkDirty: mock(() => {}),
   enableMeasure: mock(() => {}),
+  enableMeasureNative: mock(() => {}),
+  updateMeasureText: mock(() => {}),
   nodeStyleSetDirection: mock(() => {}),
   nodeStyleSetFlexDirection: mock(() => {}),
   nodeStyleSetJustifyContent: mock(() => {}),
@@ -1008,5 +1010,185 @@ describe('Yoga default export constants', () => {
   test('align constants', () => {
     expect(Yoga.ALIGN_CENTER).toBe(Align.Center);
     expect(Yoga.ALIGN_STRETCH).toBe(Align.Stretch);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enableMeasureNative / updateMeasureText
+// ---------------------------------------------------------------------------
+
+describe('enableMeasureNative / updateMeasureText', () => {
+  test('enableMeasureNative calls bridge with text and font info', () => {
+    const node = Yoga.Node.create();
+    node.enableMeasureNative('hello', 14, 'system-ui', '400');
+    expect(mockYoga.enableMeasureNative).toHaveBeenCalledWith(node._id, 'hello', 14, 'system-ui', '400');
+  });
+
+  test('updateMeasureText calls bridge with new text', () => {
+    const node = Yoga.Node.create();
+    node.updateMeasureText('world');
+    expect(mockYoga.updateMeasureText).toHaveBeenCalledWith(node._id, 'world');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Percent and auto direct setters
+// ---------------------------------------------------------------------------
+
+describe('percent and auto direct setters', () => {
+  test('setFlexBasisPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setFlexBasisPercent(50);
+    expect(mockYoga.nodeStyleSetFlexBasisPercent).toHaveBeenCalledWith(node._id, 50);
+  });
+
+  test('setFlexBasisPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setFlexBasisPercent(undefined);
+    expect(mockYoga.nodeStyleSetFlexBasisPercent).not.toHaveBeenCalled();
+  });
+
+  test('setFlexBasisAuto calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setFlexBasisAuto();
+    expect(mockYoga.nodeStyleSetFlexBasisAuto).toHaveBeenCalledWith(node._id);
+  });
+
+  test('setHeightPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setHeightPercent(75);
+    expect(mockYoga.nodeStyleSetHeightPercent).toHaveBeenCalledWith(node._id, 75);
+  });
+
+  test('setHeightPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setHeightPercent(undefined);
+    expect(mockYoga.nodeStyleSetHeightPercent).not.toHaveBeenCalled();
+  });
+
+  test('setHeightAuto calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setHeightAuto();
+    expect(mockYoga.nodeStyleSetHeightAuto).toHaveBeenCalledWith(node._id);
+  });
+
+  test('setMinWidthPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setMinWidthPercent(30);
+    expect(mockYoga.nodeStyleSetMinWidthPercent).toHaveBeenCalledWith(node._id, 30);
+  });
+
+  test('setMinWidthPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setMinWidthPercent(undefined);
+    expect(mockYoga.nodeStyleSetMinWidthPercent).not.toHaveBeenCalled();
+  });
+
+  test('setMinHeightPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setMinHeightPercent(20);
+    expect(mockYoga.nodeStyleSetMinHeightPercent).toHaveBeenCalledWith(node._id, 20);
+  });
+
+  test('setMinHeightPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setMinHeightPercent(undefined);
+    expect(mockYoga.nodeStyleSetMinHeightPercent).not.toHaveBeenCalled();
+  });
+
+  test('setMaxWidthPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setMaxWidthPercent(90);
+    expect(mockYoga.nodeStyleSetMaxWidthPercent).toHaveBeenCalledWith(node._id, 90);
+  });
+
+  test('setMaxWidthPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setMaxWidthPercent(undefined);
+    expect(mockYoga.nodeStyleSetMaxWidthPercent).not.toHaveBeenCalled();
+  });
+
+  test('setMaxHeightPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setMaxHeightPercent(85);
+    expect(mockYoga.nodeStyleSetMaxHeightPercent).toHaveBeenCalledWith(node._id, 85);
+  });
+
+  test('setMaxHeightPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setMaxHeightPercent(undefined);
+    expect(mockYoga.nodeStyleSetMaxHeightPercent).not.toHaveBeenCalled();
+  });
+
+  test('setPositionPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setPositionPercent(Edge.Top, 15);
+    expect(mockYoga.nodeStyleSetPositionPercent).toHaveBeenCalledWith(node._id, Edge.Top, 15);
+  });
+
+  test('setPositionPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setPositionPercent(Edge.Top, undefined);
+    expect(mockYoga.nodeStyleSetPositionPercent).not.toHaveBeenCalled();
+  });
+
+  test('setMarginPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setMarginPercent(Edge.Left, 10);
+    expect(mockYoga.nodeStyleSetMarginPercent).toHaveBeenCalledWith(node._id, Edge.Left, 10);
+  });
+
+  test('setMarginPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setMarginPercent(Edge.Left, undefined);
+    expect(mockYoga.nodeStyleSetMarginPercent).not.toHaveBeenCalled();
+  });
+
+  test('setPaddingPercent calls bridge', () => {
+    const node = Yoga.Node.create();
+    node.setPaddingPercent(Edge.All, 12);
+    expect(mockYoga.nodeStyleSetPaddingPercent).toHaveBeenCalledWith(node._id, Edge.All, 12);
+  });
+
+  test('setPaddingPercent undefined does nothing', () => {
+    const node = Yoga.Node.create();
+    node.setPaddingPercent(Edge.All, undefined);
+    expect(mockYoga.nodeStyleSetPaddingPercent).not.toHaveBeenCalled();
+  });
+
+  test('setGapPercent returns Undefined unit (stub)', () => {
+    const node = Yoga.Node.create();
+    const result = node.setGapPercent(Gutter.All, 10);
+    expect(result).toEqual({ unit: Unit.Undefined, value: 0 });
+  });
+
+  test('setGapPercent undefined returns Undefined unit', () => {
+    const node = Yoga.Node.create();
+    const result = node.setGapPercent(Gutter.All, undefined);
+    expect(result).toEqual({ unit: Unit.Undefined, value: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Additional percent branches in dimension setters via setXxx("N%")
+// ---------------------------------------------------------------------------
+
+describe('percent branches in min/max setters', () => {
+  test('setMinHeight percent string calls nodeStyleSetMinHeightPercent', () => {
+    const node = Yoga.Node.create();
+    node.setMinHeight('40%' as any);
+    expect(mockYoga.nodeStyleSetMinHeightPercent).toHaveBeenCalledWith(node._id, 40);
+  });
+
+  test('setMaxWidth percent string calls nodeStyleSetMaxWidthPercent', () => {
+    const node = Yoga.Node.create();
+    node.setMaxWidth('60%' as any);
+    expect(mockYoga.nodeStyleSetMaxWidthPercent).toHaveBeenCalledWith(node._id, 60);
+  });
+
+  test('setMaxHeight numeric calls nodeStyleSetMaxHeight', () => {
+    const node = Yoga.Node.create();
+    node.setMaxHeight(300);
+    expect(mockYoga.nodeStyleSetMaxHeight).toHaveBeenCalledWith(node._id, 300);
   });
 });

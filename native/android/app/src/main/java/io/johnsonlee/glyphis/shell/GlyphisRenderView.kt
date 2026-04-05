@@ -1,10 +1,12 @@
 package io.johnsonlee.glyphis.shell
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.MotionEvent
@@ -20,6 +22,9 @@ class GlyphisRenderView(context: Context) : View(context) {
 
     private val density: Float = context.resources.displayMetrics.density
     private var renderCommands: List<JSONObject> = emptyList()
+
+    /** Cache of loaded images keyed by imageId (typically the URL). */
+    val imageCache = mutableMapOf<String, Bitmap>()
 
     /** Called by [GlyphisRuntime] when a touch event occurs. Parameters: (eventType, x, y) */
     var onTouch: ((type: String, x: Float, y: Float) -> Unit)? = null
@@ -41,6 +46,7 @@ class GlyphisRenderView(context: Context) : View(context) {
             when (cmd.optString("type")) {
                 "rect" -> drawRect(canvas, cmd)
                 "text" -> drawText(canvas, cmd)
+                "image" -> drawImage(canvas, cmd)
                 "border" -> drawBorder(canvas, cmd)
                 "clip-start" -> {
                     canvas.save()
@@ -224,6 +230,64 @@ class GlyphisRenderView(context: Context) : View(context) {
             drawLine(x + lw / 2, y, x + lw / 2, y + h, lw)
         }
 
+        if (needsLayer) canvas.restore()
+    }
+
+    private fun drawImage(canvas: Canvas, cmd: JSONObject) {
+        val imageId = cmd.optString("imageId", "")
+        val bitmap = imageCache[imageId] ?: return
+        val x = cmd.optDouble("x").toFloat()
+        val y = cmd.optDouble("y").toFloat()
+        val w = cmd.optDouble("width").toFloat()
+        val h = cmd.optDouble("height").toFloat()
+        val resizeMode = cmd.optString("resizeMode", "cover")
+        val opacity = cmd.optDouble("opacity", 1.0)
+
+        val needsLayer = opacity < 1.0
+        if (needsLayer) {
+            canvas.saveLayerAlpha(null, (opacity * 255).toInt())
+        }
+
+        // borderRadius clipping
+        val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
+        val hasRadius = borderRadius > 0
+        if (hasRadius) {
+            canvas.save()
+            val clipPath = Path().apply {
+                addRoundRect(RectF(x, y, x + w, y + h), borderRadius, borderRadius, Path.Direction.CW)
+            }
+            canvas.clipPath(clipPath)
+        }
+
+        val imgW = bitmap.width.toFloat()
+        val imgH = bitmap.height.toFloat()
+        val srcRect = Rect(0, 0, bitmap.width, bitmap.height)
+        val destRect: RectF
+
+        when (resizeMode) {
+            "stretch" -> {
+                destRect = RectF(x, y, x + w, y + h)
+            }
+            "contain" -> {
+                val scale = minOf(w / imgW, h / imgH)
+                val dw = imgW * scale
+                val dh = imgH * scale
+                destRect = RectF(x + (w - dw) / 2, y + (h - dh) / 2,
+                                 x + (w + dw) / 2, y + (h + dh) / 2)
+            }
+            else -> { // "cover"
+                val scale = maxOf(w / imgW, h / imgH)
+                val dw = imgW * scale
+                val dh = imgH * scale
+                destRect = RectF(x + (w - dw) / 2, y + (h - dh) / 2,
+                                 x + (w + dw) / 2, y + (h + dh) / 2)
+            }
+        }
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(bitmap, srcRect, destRect, paint)
+
+        if (hasRadius) canvas.restore()
         if (needsLayer) canvas.restore()
     }
 

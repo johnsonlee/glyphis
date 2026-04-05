@@ -64,7 +64,35 @@ function setupTextMeasure(node: GlyphisNode): void {
   }
 }
 
-const EVENT_PROPS = new Set(['onPress', 'onPressIn', 'onPressOut', 'onPointerMove', 'onScrollDragStart', 'onScrollDragEnd']);
+const EVENT_PROPS = new Set(['onPress', 'onPressIn', 'onPressOut', 'onPointerMove', 'onScrollDragStart', 'onScrollDragEnd', 'onLoad']);
+
+// Image loading registry
+var imageLoadCallbacks: Map<string, (width: number, height: number) => void> = new Map();
+var imageLoadListenerRegistered = false;
+
+function setupImageLoad(node: GlyphisNode): void {
+  if (!currentPlatform || !node.imageProps) return;
+  var imageId = node.imageProps.imageId;
+
+  imageLoadCallbacks.set(imageId, function(width: number, height: number) {
+    if (!node.imageProps) return;
+    node.imageProps.loaded = true;
+    if (node.handlers.onLoad) {
+      node.handlers.onLoad({ width: width, height: height });
+    }
+    scheduleRender();
+  });
+
+  if (!imageLoadListenerRegistered && currentPlatform) {
+    imageLoadListenerRegistered = true;
+    currentPlatform.onImageLoaded(function(imageId: string, width: number, height: number) {
+      var cb = imageLoadCallbacks.get(imageId);
+      if (cb) cb(width, height);
+    });
+  }
+
+  currentPlatform.loadImage(imageId, node.imageProps.src);
+}
 
 export const glyphisRenderer = createRenderer<GlyphisNode>({
   createElement(tag: string): GlyphisNode {
@@ -96,12 +124,26 @@ export const glyphisRenderer = createRenderer<GlyphisNode>({
       node.style = value as Style;
       applyStyle(node.yoga, value);
       scheduleRender();
+    } else if (name === 'imageProps') {
+      node.imageProps = value;
+      setupImageLoad(node);
     } else if (EVENT_PROPS.has(name)) {
       node.handlers[name] = value;
     }
   },
 
   insertNode(parent: GlyphisNode, node: GlyphisNode, anchor?: GlyphisNode): void {
+    // If the node already belongs to another parent, remove it first.
+    // This is required for node recycling (e.g. RecyclerList) where
+    // slot nodes are re-parented to a new wrapper View on each scroll.
+    if (node.parent && node.parent !== parent) {
+      const oldChildren = node.parent.children;
+      const oldIdx = oldChildren.indexOf(node);
+      if (oldIdx !== -1) oldChildren.splice(oldIdx, 1);
+      node.parent.yoga.removeChild(node.yoga);
+      node.parent = undefined;
+    }
+
     const children = parent.children;
     const index = anchor ? children.indexOf(anchor) : -1;
     if (index >= 0) {
@@ -140,6 +182,8 @@ export const glyphisRenderer = createRenderer<GlyphisNode>({
 
 export function render(code: () => any, platform: Platform): () => void {
   currentPlatform = platform;
+  imageLoadCallbacks.clear();
+  imageLoadListenerRegistered = false;
 
   rootNode = initNode('__root');
   const viewport = platform.getViewport();

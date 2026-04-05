@@ -25,6 +25,34 @@ function walkNode(
   const style = node.style;
   const opacity = style.opacity;
 
+  if (node.tag === 'image') {
+    // Draw background as placeholder if present
+    if (style.backgroundColor) {
+      commands.push({
+        type: 'rect',
+        x, y, width: w, height: h,
+        color: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        opacity,
+        clipId,
+      });
+    }
+
+    // Draw image only if loaded
+    if (node.imageProps && node.imageProps.loaded) {
+      commands.push({
+        type: 'image',
+        imageId: node.imageProps.imageId,
+        x, y, width: w, height: h,
+        resizeMode: node.imageProps.resizeMode,
+        opacity: style.opacity,
+        borderRadius: style.borderRadius,
+        clipId,
+      });
+    }
+    return;
+  }
+
   if (node.tag === '__text') {
     const text = node.text;
     if (!text) return;

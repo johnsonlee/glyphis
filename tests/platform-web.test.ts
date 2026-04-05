@@ -444,3 +444,214 @@ describe('onInput', () => {
     expect(callback).toHaveBeenCalledWith({ type: 'pointerdown', x: 100, y: 200 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Image loading
+// ---------------------------------------------------------------------------
+
+var mockImages: any[] = [];
+
+describe('loadImage', () => {
+  beforeEach(() => {
+    mockImages = [];
+    (globalThis as any).Image = function () {
+      var img = { onload: null as any, onerror: null as any, src: '', naturalWidth: 100, naturalHeight: 50, crossOrigin: '' };
+      mockImages.push(img);
+      return img;
+    };
+  });
+
+  test('loads an image and fires onImageLoaded callback', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    var loadedCallback = mock(function () {});
+    platform.onImageLoaded(loadedCallback);
+
+    platform.loadImage('img-1', 'https://example.com/photo.jpg');
+    expect(mockImages.length).toBe(1);
+    expect(mockImages[0].src).toBe('https://example.com/photo.jpg');
+    expect(mockImages[0].crossOrigin).toBe('anonymous');
+
+    // Simulate image load
+    mockImages[0].onload();
+    expect(loadedCallback).toHaveBeenCalledWith('img-1', 100, 50);
+  });
+
+  test('returns cached image on second call', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    var loadedCallback = mock(function () {});
+    platform.onImageLoaded(loadedCallback);
+
+    platform.loadImage('img-2', 'https://example.com/a.jpg');
+    // Trigger onload to cache the image
+    mockImages[0].onload();
+    loadedCallback.mockClear();
+
+    // Second call should use cache, not create new Image
+    var prevCount = mockImages.length;
+    platform.loadImage('img-2', 'https://example.com/a.jpg');
+    expect(mockImages.length).toBe(prevCount);
+    // Callback should still fire with cached dimensions
+    expect(loadedCallback).toHaveBeenCalledWith('img-2', 100, 50);
+  });
+
+  test('onImageLoaded callback fires when image loads', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    var callbackResult: { id: string; w: number; h: number } | null = null;
+    platform.onImageLoaded(function (id: string, w: number, h: number) {
+      callbackResult = { id: id, w: w, h: h };
+    });
+
+    platform.loadImage('img-3', 'https://example.com/b.jpg');
+    mockImages[0].naturalWidth = 200;
+    mockImages[0].naturalHeight = 150;
+    mockImages[0].onload();
+
+    expect(callbackResult).toEqual({ id: 'img-3', w: 200, h: 150 });
+  });
+
+  test('onerror does not throw', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.loadImage('img-err', 'https://example.com/bad.jpg');
+    expect(function () {
+      mockImages[0].onerror();
+    }).not.toThrow();
+  });
+
+  test('loadImage without onImageLoaded set does not throw', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.loadImage('img-no-cb', 'https://example.com/c.jpg');
+    expect(function () {
+      mockImages[0].onload();
+    }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Image rendering (drawImage)
+// ---------------------------------------------------------------------------
+
+describe('render image commands', () => {
+  beforeEach(() => {
+    mockImages = [];
+    (globalThis as any).Image = function () {
+      var img = { onload: null as any, onerror: null as any, src: '', naturalWidth: 200, naturalHeight: 100, crossOrigin: '' };
+      mockImages.push(img);
+      return img;
+    };
+  });
+
+  test('image command with stretch draws at exact dimensions', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.onImageLoaded(function () {});
+
+    // Load and cache an image
+    platform.loadImage('stretch-img', 'https://example.com/s.jpg');
+    mockImages[0].onload();
+
+    // Reset mocks to isolate the render call
+    mockCtx.save.mockClear();
+    mockCtx.restore.mockClear();
+    mockCtx.drawImage = mock(function () {});
+
+    platform.render([
+      { type: 'image', imageId: 'stretch-img', x: 10, y: 20, width: 300, height: 200, resizeMode: 'stretch' },
+    ]);
+
+    expect(mockCtx.save).toHaveBeenCalled();
+    expect(mockCtx.drawImage).toHaveBeenCalledWith(expect.anything(), 10, 20, 300, 200);
+    expect(mockCtx.restore).toHaveBeenCalled();
+  });
+
+  test('image command with contain scales preserving aspect ratio', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.onImageLoaded(function () {});
+
+    platform.loadImage('contain-img', 'https://example.com/c.jpg');
+    mockImages[0].naturalWidth = 200;
+    mockImages[0].naturalHeight = 100;
+    mockImages[0].onload();
+
+    mockCtx.drawImage = mock(function () {});
+
+    platform.render([
+      { type: 'image', imageId: 'contain-img', x: 0, y: 0, width: 200, height: 200, resizeMode: 'contain' },
+    ]);
+
+    // scale = min(200/200, 200/100) = min(1, 2) = 1
+    // dw = 200*1 = 200, dh = 100*1 = 100
+    // dx = 0 + (200-200)/2 = 0, dy = 0 + (200-100)/2 = 50
+    expect(mockCtx.drawImage).toHaveBeenCalledWith(expect.anything(), 0, 50, 200, 100);
+  });
+
+  test('image command with cover scales to fill', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.onImageLoaded(function () {});
+
+    platform.loadImage('cover-img', 'https://example.com/co.jpg');
+    mockImages[0].naturalWidth = 200;
+    mockImages[0].naturalHeight = 100;
+    mockImages[0].onload();
+
+    mockCtx.drawImage = mock(function () {});
+
+    platform.render([
+      { type: 'image', imageId: 'cover-img', x: 0, y: 0, width: 200, height: 200, resizeMode: 'cover' },
+    ]);
+
+    // scale = max(200/200, 200/100) = max(1, 2) = 2
+    // dw = 200*2 = 400, dh = 100*2 = 200
+    // dx = 0 + (200-400)/2 = -100, dy = 0 + (200-200)/2 = 0
+    expect(mockCtx.drawImage).toHaveBeenCalledWith(expect.anything(), -100, 0, 400, 200);
+  });
+
+  test('image command with borderRadius clips', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.onImageLoaded(function () {});
+
+    platform.loadImage('br-img', 'https://example.com/br.jpg');
+    mockImages[0].onload();
+
+    mockCtx.drawImage = mock(function () {});
+    mockCtx.clip.mockClear();
+    mockCtx.beginPath.mockClear();
+    mockCtx.arcTo.mockClear();
+
+    platform.render([
+      { type: 'image', imageId: 'br-img', x: 0, y: 0, width: 100, height: 100, resizeMode: 'cover', borderRadius: 10 },
+    ]);
+
+    expect(mockCtx.beginPath).toHaveBeenCalled();
+    expect(mockCtx.arcTo).toHaveBeenCalled();
+    expect(mockCtx.clip).toHaveBeenCalled();
+  });
+
+  test('image command with opacity sets globalAlpha', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    platform.onImageLoaded(function () {});
+
+    platform.loadImage('op-img', 'https://example.com/op.jpg');
+    mockImages[0].onload();
+
+    mockCtx.drawImage = mock(function () {});
+    mockCtx.globalAlpha = 1;
+
+    platform.render([
+      { type: 'image', imageId: 'op-img', x: 0, y: 0, width: 100, height: 100, resizeMode: 'stretch', opacity: 0.5 },
+    ]);
+
+    // globalAlpha should have been set (inside save/restore cycle)
+    expect(mockCtx.save).toHaveBeenCalled();
+    expect(mockCtx.restore).toHaveBeenCalled();
+  });
+
+  test('image command for uncached image does not draw', () => {
+    var platform = createWebPlatform(mockCanvas as any);
+    mockCtx.drawImage = mock(function () {});
+
+    platform.render([
+      { type: 'image', imageId: 'nonexistent', x: 0, y: 0, width: 100, height: 100, resizeMode: 'stretch' },
+    ]);
+
+    expect(mockCtx.drawImage).not.toHaveBeenCalled();
+  });
+});
