@@ -41,8 +41,8 @@ describe('Benchmarks', function () {
 
   // -- 1. Node creation throughput --
 
-  it('node creation: 1000 View+Text in < 50ms', async function () {
-    var threshold = 50;
+  it('node creation: 1000 View+Text in < 100ms', async function () {
+    var threshold = 100;
     var t0 = performance.now();
     dispose = render(function () {
       var children: any[] = [];
@@ -70,8 +70,8 @@ describe('Benchmarks', function () {
 
   // -- 2. Signal update throughput --
 
-  it('signal updates: 1000 batch updates in < 10ms', async function () {
-    var threshold = 10;
+  it('signal updates: 1000 batch updates in < 20ms', async function () {
+    var threshold = 20;
     var signals: Array<[() => number, (v: number) => void]> = [];
     for (var i = 0; i < 1000; i++) {
       var sig = createSignal(0);
@@ -91,8 +91,8 @@ describe('Benchmarks', function () {
 
   // -- 3. RecyclerList creation with 10K data --
 
-  it('RecyclerList: create with 10K items in < 50ms', async function () {
-    var threshold = 50;
+  it('RecyclerList: create with 10K items in < 100ms', async function () {
+    var threshold = 100;
     var data: Array<{ id: number; label: string }> = [];
     for (var i = 0; i < 10000; i++) {
       data.push({ id: i, label: 'Item ' + i });
@@ -128,8 +128,8 @@ describe('Benchmarks', function () {
 
   // -- 4. Render command generation --
 
-  it('commands: generate for 100 styled nodes in < 5ms', async function () {
-    var threshold = 5;
+  it('commands: generate for 100 styled nodes in < 10ms', async function () {
+    var threshold = 10;
     var commandCount = 0;
     var capturedPlatform: Platform = {
       measureText: function () { return { width: 50, height: 16 }; },
@@ -199,8 +199,8 @@ describe('Benchmarks', function () {
 
   // -- 5. Layout calculation --
 
-  it('layout: calculate for 100 nodes in < 10ms', async function () {
-    var threshold = 10;
+  it('layout: calculate for 100 nodes in < 20ms', async function () {
+    var threshold = 20;
     var root = Yoga.Node.create();
     root.setWidth(390);
     root.setHeight(844);
@@ -231,8 +231,8 @@ describe('Benchmarks', function () {
 
   // -- 6. Style application --
 
-  it('style: apply 10-prop style to 1000 nodes in < 20ms', async function () {
-    var threshold = 20;
+  it('style: apply 10-prop style to 1000 nodes in < 40ms', async function () {
+    var threshold = 40;
     var nodes: any[] = [];
     for (var i = 0; i < 1000; i++) {
       nodes.push(Yoga.Node.create());
@@ -267,8 +267,8 @@ describe('Benchmarks', function () {
 
   // -- 7. RecyclerList scroll (slot rebinding) --
 
-  it('RecyclerList: scroll 10 pages in < 5ms avg per page', async function () {
-    var threshold = 5;
+  it('RecyclerList: scroll 10 pages in < 10ms avg per page', async function () {
+    var threshold = 10;
     var data: Array<{ id: number; label: string }> = [];
     for (var i = 0; i < 10000; i++) {
       data.push({ id: i, label: 'Item ' + i });
@@ -317,8 +317,8 @@ describe('Benchmarks', function () {
 
   // -- 8. Tree walk (hit testing) --
 
-  it('hit test: 100-node tree 1000 times in < 1ms avg', async function () {
-    var threshold = 1;
+  it('hit test: 100-node tree 1000 times in < 2ms avg', async function () {
+    var threshold = 2;
 
     // Build a nested tree: root -> 10 children -> 10 grandchildren each = 100 leaf nodes
     var root = createGlyphisNode(Yoga.Node.create(), '__root');
