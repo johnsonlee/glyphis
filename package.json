@@ -10,7 +10,8 @@
   "scripts": {
     "test": "bun test --conditions browser --coverage",
     "dev": "bun run src/devserver/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target browser"
+    "build": "bun build src/index.ts --outdir dist --target browser",
+    "bench": "bun test tests/benchmark.test.ts --conditions browser"
   },
   "devDependencies": {
     "@types/bun": "latest"
