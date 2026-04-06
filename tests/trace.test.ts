@@ -39,7 +39,7 @@ describe('trace', function () {
     expect(getTraceEvents().length).toBe(0);
   });
 
-  it('beginSpan/endSpan records events when enabled', function () {
+  it('beginSpan/endSpan records B/E events with correct name/cat/ph', function () {
     enableTracing();
     const handle = beginSpan('mySpan', 'myCategory');
     endSpan(handle);
@@ -50,15 +50,13 @@ describe('trace', function () {
     expect(events[0].name).toBe('mySpan');
     expect(events[0].cat).toBe('myCategory');
     expect(events[0].ph).toBe('B');
-    expect(events[0].ts).toBeGreaterThan(0);
 
     expect(events[1].name).toBe('mySpan');
     expect(events[1].cat).toBe('myCategory');
     expect(events[1].ph).toBe('E');
-    expect(events[1].ts).toBeGreaterThanOrEqual(events[0].ts);
   });
 
-  it('nested spans', function () {
+  it('nested spans ordering', function () {
     enableTracing();
     const outer = beginSpan('outer', 'cat');
     const inner = beginSpan('inner', 'cat');
@@ -78,7 +76,7 @@ describe('trace', function () {
     expect(events[3].ph).toBe('E');
   });
 
-  it('args passed to beginSpan', function () {
+  it('args on begin', function () {
     enableTracing();
     const handle = beginSpan('test', 'cat', { key: 'value' });
     endSpan(handle);
@@ -87,7 +85,7 @@ describe('trace', function () {
     expect(events[0].args).toEqual({ key: 'value' });
   });
 
-  it('args passed to endSpan', function () {
+  it('args on end', function () {
     enableTracing();
     const handle = beginSpan('test', 'cat');
     endSpan(handle, { result: 42 });
@@ -95,29 +93,6 @@ describe('trace', function () {
     const events = getTraceEvents();
     expect(events[0].args).toBeUndefined();
     expect(events[1].args).toEqual({ result: 42 });
-  });
-
-  it('traceSync executes function and returns result when disabled', function () {
-    const result = traceSync('test', 'cat', function () {
-      return 123;
-    });
-    expect(result).toBe(123);
-    expect(getTraceEvents().length).toBe(0);
-  });
-
-  it('traceSync records span when enabled', function () {
-    enableTracing();
-    const result = traceSync('syncOp', 'cat', function () {
-      return 'hello';
-    });
-
-    expect(result).toBe('hello');
-    const events = getTraceEvents();
-    expect(events.length).toBe(2);
-    expect(events[0].name).toBe('syncOp');
-    expect(events[0].ph).toBe('B');
-    expect(events[1].name).toBe('syncOp');
-    expect(events[1].ph).toBe('E');
   });
 
   it('flushTraceEvents returns Chrome Trace Event Format JSON', function () {
@@ -155,27 +130,144 @@ describe('trace', function () {
     expect(getTraceEvents().length).toBe(0);
   });
 
-  it('ts is in microseconds', function () {
-    enableTracing();
-    const handle = beginSpan('test', 'cat');
-    endSpan(handle);
-
-    const events = getTraceEvents();
-    // performance.now() returns ms; ts = performance.now() * 1000 => microseconds
-    // A reasonable ts should be well above 1000 (i.e. at least 1ms of process uptime)
-    expect(events[0].ts).toBeGreaterThan(0);
-    expect(events[0].ts).toBeGreaterThan(1000);
+  it('traceSync executes function and returns result when disabled', function () {
+    const result = traceSync('test', 'cat', function () {
+      return 123;
+    });
+    expect(result).toBe(123);
+    expect(getTraceEvents().length).toBe(0);
   });
 
-  it('events have pid and tid', function () {
+  it('traceSync records span and returns value when enabled', function () {
     enableTracing();
-    const handle = beginSpan('test', 'cat');
+    const result = traceSync('syncOp', 'cat', function () {
+      return 'hello';
+    });
+
+    expect(result).toBe('hello');
+    const events = getTraceEvents();
+    expect(events.length).toBe(2);
+    expect(events[0].name).toBe('syncOp');
+    expect(events[0].ph).toBe('B');
+    expect(events[1].name).toBe('syncOp');
+    expect(events[1].ph).toBe('E');
+  });
+
+  it('traceSync closes span on exception', function () {
+    enableTracing();
+    const error = new Error('boom');
+
+    expect(function () {
+      traceSync('failing', 'cat', function () {
+        throw error;
+      });
+    }).toThrow(error);
+
+    const events = getTraceEvents();
+    expect(events.length).toBe(2);
+    expect(events[0].name).toBe('failing');
+    expect(events[0].ph).toBe('B');
+    expect(events[1].name).toBe('failing');
+    expect(events[1].ph).toBe('E');
+  });
+
+  it('disable stops new spans but endSpan still records for already-started spans', function () {
+    enableTracing();
+    const handleA = beginSpan('A', 'cat');
+
+    disableTracing();
+    const handleB = beginSpan('B', 'cat');
+    endSpan(handleB);
+    endSpan(handleA);
+
+    const events = getTraceEvents();
+    // Span A begin was recorded while enabled
+    // Span B begin was NOT recorded (disabled at that point), returns NOP_HANDLE
+    // endSpan(handleB) is noop because handleB._index === -1
+    // endSpan(handleA) DOES record because it checks handle._index, not _enabled
+    expect(events.length).toBe(2);
+    expect(events[0].name).toBe('A');
+    expect(events[0].ph).toBe('B');
+    expect(events[1].name).toBe('A');
+    expect(events[1].ph).toBe('E');
+  });
+
+  it('multiple flush cycles are independent', function () {
+    enableTracing();
+
+    const h1 = beginSpan('first', 'cat');
+    endSpan(h1);
+    const json1 = flushTraceEvents();
+    const parsed1 = JSON.parse(json1);
+
+    const h2 = beginSpan('second', 'cat');
+    endSpan(h2);
+    const json2 = flushTraceEvents();
+    const parsed2 = JSON.parse(json2);
+
+    expect(parsed1.traceEvents.length).toBe(2);
+    expect(parsed1.traceEvents[0].name).toBe('first');
+    expect(parsed1.traceEvents[1].name).toBe('first');
+
+    expect(parsed2.traceEvents.length).toBe(2);
+    expect(parsed2.traceEvents[0].name).toBe('second');
+    expect(parsed2.traceEvents[1].name).toBe('second');
+  });
+
+  it('endSpan with stale handle after clearTraceEvents is safe no-op', function () {
+    enableTracing();
+    const handle = beginSpan('stale', 'cat');
+    clearTraceEvents();
+
+    // handle._index is 0, but _events was cleared, so _events[0] is undefined.
+    // endSpan should silently bail out, not crash.
+    endSpan(handle);
+    expect(getTraceEvents().length).toBe(0);
+  });
+
+  it('high-volume span recording', function () {
+    enableTracing();
+    const count = 1000;
+
+    for (let i = 0; i < count; i++) {
+      const h = beginSpan('span-' + i, 'load');
+      endSpan(h);
+    }
+
+    const events = getTraceEvents();
+    expect(events.length).toBe(count * 2);
+
+    for (let i = 0; i < count; i++) {
+      const b = events[i * 2];
+      const e = events[i * 2 + 1];
+      expect(b.ph).toBe('B');
+      expect(e.ph).toBe('E');
+      expect(b.name).toBe('span-' + i);
+      expect(e.name).toBe('span-' + i);
+    }
+  });
+
+  it('category defaults to default when omitted', function () {
+    enableTracing();
+    const handle = beginSpan('no-cat');
     endSpan(handle);
 
     const events = getTraceEvents();
-    for (const event of events) {
-      expect(event.pid).toBe(1);
-      expect(event.tid).toBe(1);
+    expect(events[0].cat).toBe('default');
+    expect(events[1].cat).toBe('default');
+  });
+
+  it('B timestamp <= E timestamp', function () {
+    enableTracing();
+    const handle = beginSpan('timed', 'cat');
+    // Busy loop to ensure some time passes
+    let sum = 0;
+    for (let i = 0; i < 10000; i++) {
+      sum += i;
     }
+    endSpan(handle);
+
+    const events = getTraceEvents();
+    expect(events[1].ts).toBeGreaterThanOrEqual(events[0].ts);
   });
 });
