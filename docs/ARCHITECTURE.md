@@ -157,8 +157,8 @@ Polyfilled on native JSC so npm packages work without modification:
 - **View recycling**: RecyclerList with signal-based slot recycling. 10K rows in 6ms (131x faster than baseline).
 - **Batch measure**: Eliminated JS↔native bridge calls during layout — text measured directly in native C++/ObjC.
 - **Zero-JSON pipeline**: All hot-path serialization eliminated. Direct JSValueRef property access + typed JNI calls.
+- **Accessibility**: Semantics tree built from GlyphisNode tree with AccessibilityProps. Web uses ARIA overlay divs. iOS/macOS use native accessibility elements (UIAccessibilityElement/NSAccessibilityElement). Android uses ExploreByTouchHelper. Zero overhead when no accessible nodes.
 
 ## Open Questions
 
-- **Accessibility**: Single-surface rendering bypasses platform accessibility trees. Needs a strategy before production use.
 - **GPU rendering**: When to introduce, and whether it changes the architecture.

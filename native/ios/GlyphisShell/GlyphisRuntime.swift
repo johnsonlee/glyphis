@@ -33,6 +33,7 @@ class GlyphisRuntime {
     private var wsMessageCallback: JSValue?
     private var wsCloseCallback: JSValue?
     private var wsErrorCallback: JSValue?
+    private var accessibilityActionCallback: JSValue?
 
     // WebSocket state
     private var webSocketTasks: [Int: URLSessionWebSocketTask] = [:]
@@ -65,6 +66,7 @@ class GlyphisRuntime {
         wsMessageCallback = context.objectForKeyedSubscript("__glyphis_onWsMessage")
         wsCloseCallback = context.objectForKeyedSubscript("__glyphis_onWsClose")
         wsErrorCallback = context.objectForKeyedSubscript("__glyphis_onWsError")
+        accessibilityActionCallback = context.objectForKeyedSubscript("__glyphis_onAccessibilityAction")
 
         // Wire up RenderView text callbacks to use cached JSValues
         renderView?.onTextChange = { [weak self] inputId, text in
@@ -77,12 +79,18 @@ class GlyphisRuntime {
             self?.textFocusCallback?.call(withArguments: [inputId])
         }
 
+        // Wire up accessibility action callback
+        renderView?.onAccessibilityAction = { [weak self] nodeId, action in
+            self?.accessibilityActionCallback?.call(withArguments: [nodeId, action])
+        }
+
         // Remove internal callbacks from globalThis — Swift holds the only reference.
         let internals = [
             "__glyphis_handleTouch", "__glyphis_onTextChange", "__glyphis_onTextSubmit",
             "__glyphis_onTextFocus", "__glyphis_onTextBlur", "__glyphis_onImageLoaded",
             "__glyphis_updateViewport", "__glyphis_onFetchResponse", "__glyphis_onFetchError",
             "__glyphis_onWsOpen", "__glyphis_onWsMessage", "__glyphis_onWsClose", "__glyphis_onWsError",
+            "__glyphis_onAccessibilityAction",
         ]
         for name in internals {
             context.evaluateScript("delete globalThis.\(name)")
@@ -288,6 +296,16 @@ class GlyphisRuntime {
             self?.closeWebSocket(wsId: wsId, code: code, reason: reason)
         }
         bridge.setObject(wsCloseBridge, forKeyedSubscript: "wsClose" as NSString)
+
+        // submitAccessibilityTree: receives JS array of semantics nodes
+        let submitA11y: @convention(block) (JSValue) -> Void = { [weak self] jsNodes in
+            guard let self = self else { return }
+            let nodes = self.readAccessibilityNodes(jsNodes)
+            DispatchQueue.main.async {
+                self.renderView?.updateAccessibilityTree(nodes)
+            }
+        }
+        bridge.setObject(submitA11y, forKeyedSubscript: "submitAccessibilityTree" as NSString)
 
         // platform identifier
         bridge.setObject("ios", forKeyedSubscript: "platform" as NSString)
@@ -858,6 +876,39 @@ class GlyphisRuntime {
         let closeCode = URLSessionWebSocketTask.CloseCode(rawValue: code) ?? .normalClosure
         task.cancel(with: closeCode, reason: reason.data(using: .utf8))
         webSocketTasks.removeValue(forKey: wsId)
+    }
+
+    // MARK: - Accessibility Node Reading
+
+    private func readAccessibilityNodes(_ jsNodes: JSValue) -> [[String: Any]] {
+        let count = jsNodes.objectForKeyedSubscript("length")?.toInt32() ?? 0
+        var nodes: [[String: Any]] = []
+        for i in 0..<count {
+            guard let node = jsNodes.objectAtIndexedSubscript(Int(i)) else { continue }
+            var dict: [String: Any] = [:]
+            dict["id"] = node.objectForKeyedSubscript("id")?.toInt32() ?? 0
+            dict["parentId"] = node.objectForKeyedSubscript("parentId")?.toInt32() ?? -1
+            dict["x"] = node.objectForKeyedSubscript("x")?.toDouble() ?? 0
+            dict["y"] = node.objectForKeyedSubscript("y")?.toDouble() ?? 0
+            dict["width"] = node.objectForKeyedSubscript("width")?.toDouble() ?? 0
+            dict["height"] = node.objectForKeyedSubscript("height")?.toDouble() ?? 0
+            dict["label"] = node.objectForKeyedSubscript("label")?.toString() ?? ""
+            dict["hint"] = node.objectForKeyedSubscript("hint")?.toString() ?? ""
+            dict["role"] = node.objectForKeyedSubscript("role")?.toString() ?? "none"
+            // Read actions array
+            var actions: [String] = []
+            if let actionsVal = node.objectForKeyedSubscript("actions"), !actionsVal.isUndefined {
+                let len = actionsVal.objectForKeyedSubscript("length")?.toInt32() ?? 0
+                for j in 0..<len {
+                    if let a = actionsVal.objectAtIndexedSubscript(Int(j))?.toString() {
+                        actions.append(a)
+                    }
+                }
+            }
+            dict["actions"] = actions
+            nodes.append(dict)
+        }
+        return nodes
     }
 
     private func setupTouchBridge() {

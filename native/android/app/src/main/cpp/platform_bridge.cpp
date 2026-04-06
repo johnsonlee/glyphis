@@ -879,9 +879,148 @@ static JSValueRef js_wsClose(
 /*  Register __glyphis_native + console on global context             */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/*  JS callback: __glyphis_native.submitAccessibilityTree(nodes)      */
+/*  Reads the JS array directly via JSC API — no JSON serialization.  */
+/* ------------------------------------------------------------------ */
+
+/* Cached JSStringRef property names for accessibility nodes */
+static JSStringRef s_a11y_prop_id = NULL;
+static JSStringRef s_a11y_prop_parentId = NULL;
+static JSStringRef s_a11y_prop_label = NULL;
+static JSStringRef s_a11y_prop_hint = NULL;
+static JSStringRef s_a11y_prop_role = NULL;
+static JSStringRef s_a11y_prop_actions = NULL;
+
+static void init_a11y_property_names(void) {
+    if (s_a11y_prop_id) return;
+    s_a11y_prop_id       = JSStringCreateWithUTF8CString("id");
+    s_a11y_prop_parentId = JSStringCreateWithUTF8CString("parentId");
+    s_a11y_prop_label    = JSStringCreateWithUTF8CString("label");
+    s_a11y_prop_hint     = JSStringCreateWithUTF8CString("hint");
+    s_a11y_prop_role     = JSStringCreateWithUTF8CString("role");
+    s_a11y_prop_actions  = JSStringCreateWithUTF8CString("actions");
+}
+
+/* Cached JNI method IDs for accessibility batch dispatch */
+static jmethodID s_mid_a11yBeginBatch = NULL;
+static jmethodID s_mid_a11yNode       = NULL;
+static jmethodID s_mid_a11yEndBatch   = NULL;
+static bool s_a11y_jni_cached = false;
+
+static void cache_a11y_jni_methods(JNIEnv* env) {
+    if (s_a11y_jni_cached) return;
+    jclass cls = env->GetObjectClass(g_runtime);
+    s_mid_a11yBeginBatch = env->GetMethodID(cls, "onBeginAccessibilityBatch", "()V");
+    s_mid_a11yNode       = env->GetMethodID(cls, "onAccessibilityNode",
+        "(IIDDDDLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    s_mid_a11yEndBatch   = env->GetMethodID(cls, "onEndAccessibilityBatch", "()V");
+    env->DeleteLocalRef(cls);
+    s_a11y_jni_cached = true;
+}
+
+static char* js_get_string(JSContextRef ctx, JSObjectRef obj, JSStringRef prop) {
+    JSValueRef val = JSObjectGetProperty(ctx, obj, prop, NULL);
+    if (!val || JSValueIsUndefined(ctx, val)) {
+        char* empty = (char*)malloc(1);
+        empty[0] = '\0';
+        return empty;
+    }
+    JSStringRef jsStr = JSValueToStringCopy(ctx, val, NULL);
+    char* cstr = JSStringToCString(jsStr);
+    JSStringRelease(jsStr);
+    return cstr;
+}
+
+static JSValueRef js_submitAccessibilityTree(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 1) return JSValueMakeUndefined(ctx);
+
+    JSObjectRef nodeArray = JSValueToObject(ctx, argv[0], NULL);
+    if (!nodeArray) return JSValueMakeUndefined(ctx);
+
+    int count = (int)JSValueToNumber(ctx,
+        JSObjectGetProperty(ctx, nodeArray, s_prop_length, NULL), NULL);
+    if (count <= 0) return JSValueMakeUndefined(ctx);
+
+    JNIEnv* env = getJNIEnv();
+    if (!env || !g_runtime) return JSValueMakeUndefined(ctx);
+
+    if (!s_a11y_jni_cached) cache_a11y_jni_methods(env);
+
+    env->CallVoidMethod(g_runtime, s_mid_a11yBeginBatch);
+
+    for (int i = 0; i < count; i++) {
+        JSValueRef elem = JSObjectGetPropertyAtIndex(ctx, nodeArray, i, NULL);
+        if (!elem || JSValueIsUndefined(ctx, elem)) continue;
+        JSObjectRef node = JSValueToObject(ctx, elem, NULL);
+        if (!node) continue;
+
+        int id       = js_get_int(ctx, node, s_a11y_prop_id);
+        int parentId = js_get_int(ctx, node, s_a11y_prop_parentId);
+        double x     = js_get_double(ctx, node, s_prop_x);
+        double y     = js_get_double(ctx, node, s_prop_y);
+        double w     = js_get_double(ctx, node, s_prop_width);
+        double h     = js_get_double(ctx, node, s_prop_height);
+
+        char* label = js_get_string(ctx, node, s_a11y_prop_label);
+        char* hint  = js_get_string(ctx, node, s_a11y_prop_hint);
+        char* role  = js_get_string(ctx, node, s_a11y_prop_role);
+
+        /* Read actions array as comma-separated string */
+        char actionsBuf[256] = {0};
+        JSValueRef actionsVal = JSObjectGetProperty(ctx, node, s_a11y_prop_actions, NULL);
+        if (actionsVal && !JSValueIsUndefined(ctx, actionsVal)) {
+            JSObjectRef actionsArr = JSValueToObject(ctx, actionsVal, NULL);
+            if (actionsArr) {
+                int aLen = (int)JSValueToNumber(ctx,
+                    JSObjectGetProperty(ctx, actionsArr, s_prop_length, NULL), NULL);
+                int pos = 0;
+                for (int j = 0; j < aLen && pos < 250; j++) {
+                    JSValueRef aElem = JSObjectGetPropertyAtIndex(ctx, actionsArr, j, NULL);
+                    if (!aElem || JSValueIsUndefined(ctx, aElem)) continue;
+                    JSStringRef aStr = JSValueToStringCopy(ctx, aElem, NULL);
+                    char* aCstr = JSStringToCString(aStr);
+                    if (j > 0 && pos < 254) actionsBuf[pos++] = ',';
+                    int slen = (int)strlen(aCstr);
+                    if (pos + slen < 255) {
+                        memcpy(actionsBuf + pos, aCstr, slen);
+                        pos += slen;
+                    }
+                    free(aCstr);
+                    JSStringRelease(aStr);
+                }
+                actionsBuf[pos] = '\0';
+            }
+        }
+
+        jstring jLabel   = env->NewStringUTF(label);
+        jstring jHint    = env->NewStringUTF(hint);
+        jstring jRole    = env->NewStringUTF(role);
+        jstring jActions = env->NewStringUTF(actionsBuf);
+
+        env->CallVoidMethod(g_runtime, s_mid_a11yNode,
+            id, parentId, x, y, w, h, jLabel, jHint, jRole, jActions);
+
+        env->DeleteLocalRef(jLabel);
+        env->DeleteLocalRef(jHint);
+        env->DeleteLocalRef(jRole);
+        env->DeleteLocalRef(jActions);
+        free(label);
+        free(hint);
+        free(role);
+    }
+
+    env->CallVoidMethod(g_runtime, s_mid_a11yEndBatch);
+    return JSValueMakeUndefined(ctx);
+}
+
 void register_platform_bridge(JSContextRef ctx, JSObjectRef global) {
     /* Initialize cached JSStringRef property names for render command reading */
     init_property_names();
+    init_a11y_property_names();
 
     /* -- console object -- */
     JSObjectRef consoleObj = JSObjectMake(ctx, NULL, NULL);
@@ -923,5 +1062,6 @@ void register_platform_bridge(JSContextRef ctx, JSObjectRef global) {
     setFunctionProperty(ctx, bridge, "wsConnect",            js_wsConnect);
     setFunctionProperty(ctx, bridge, "wsSend",               js_wsSend);
     setFunctionProperty(ctx, bridge, "wsClose",              js_wsClose);
+    setFunctionProperty(ctx, bridge, "submitAccessibilityTree", js_submitAccessibilityTree);
     setStringProperty(ctx,   bridge, "platform",             "android");
 }

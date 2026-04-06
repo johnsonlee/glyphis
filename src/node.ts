@@ -1,5 +1,5 @@
 import type { Node as YogaNode } from 'yoga-layout';
-import type { Style } from './types';
+import type { Style, AccessibilityProps } from './types';
 
 export interface ImageProps {
   src: string;
@@ -18,6 +18,8 @@ export interface GlyphisNode {
   parent: GlyphisNode | undefined;
   imageProps: ImageProps | undefined;
   textInputId: string | undefined;
+  accessibilityProps: AccessibilityProps | undefined;
+  semanticsId: number | undefined;
 }
 
 export function createGlyphisNode(yoga: YogaNode, tag: string): GlyphisNode {
@@ -31,5 +33,7 @@ export function createGlyphisNode(yoga: YogaNode, tag: string): GlyphisNode {
     parent: undefined,
     imageProps: undefined,
     textInputId: undefined,
+    accessibilityProps: undefined,
+    semanticsId: undefined,
   };
 }

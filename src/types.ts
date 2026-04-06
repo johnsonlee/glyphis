@@ -1,5 +1,34 @@
 import type { Node } from 'yoga-layout';
 
+export type AccessibilityRole =
+  | 'none' | 'button' | 'link' | 'search' | 'image' | 'text'
+  | 'header' | 'switch' | 'checkbox' | 'radio' | 'tab' | 'list' | 'alert';
+
+export interface AccessibilityProps {
+  accessible?: boolean;
+  accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHint?: string;
+}
+
+export interface SemanticsNode {
+  id: number;
+  parentId: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  hint: string;
+  role: string;
+  actions: string[];
+}
+
+export interface AccessibilityPlatform {
+  submitAccessibilityTree(nodes: SemanticsNode[]): void;
+  onAccessibilityAction(callback: (nodeId: number, action: string) => void): void;
+}
+
 export interface Style {
   width?: number | `${number}%` | 'auto';
   height?: number | `${number}%` | 'auto';
@@ -96,7 +125,7 @@ export interface TextInputPlatform {
 }
 
 // Combined -- what platform implementations return
-export type Platform = RenderPlatform & Partial<ImagePlatform> & Partial<TextInputPlatform>;
+export type Platform = RenderPlatform & Partial<ImagePlatform> & Partial<TextInputPlatform> & Partial<AccessibilityPlatform>;
 
 export interface TextInputConfig {
   inputId: string;
@@ -123,4 +152,5 @@ export type InputEvent =
   | { type: 'textchange'; inputId: string; text: string }
   | { type: 'textsubmit'; inputId: string }
   | { type: 'textfocus'; inputId: string }
-  | { type: 'textblur'; inputId: string };
+  | { type: 'textblur'; inputId: string }
+  | { type: 'accessibilityaction'; nodeId: number; action: string };

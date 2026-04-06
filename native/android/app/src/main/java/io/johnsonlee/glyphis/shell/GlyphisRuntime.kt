@@ -76,6 +76,7 @@ class GlyphisRuntime(
         renderView.imageLookup = { imageId -> imageLoader.cache[imageId] }
         nativeInit()
         setupTouchBridge()
+        setupAccessibilityBridge()
     }
 
     fun loadBundle() {
@@ -367,6 +368,43 @@ class GlyphisRuntime(
         }
     }
 
+    // -- Accessibility bridge --
+
+    private fun setupAccessibilityBridge() {
+        renderView.accessibilityHelper.onAction = { nodeId, action ->
+            nativeFireAccessibilityAction(nodeId, action)
+        }
+    }
+
+    private val pendingA11yNodes = mutableListOf<GlyphisAccessibilityHelper.SemanticsNode>()
+
+    /** Called from JNI at the start of an accessibility tree batch. */
+    @Suppress("unused")
+    fun onBeginAccessibilityBatch() {
+        pendingA11yNodes.clear()
+    }
+
+    /** Called from JNI for each accessibility node in the batch. */
+    @Suppress("unused")
+    fun onAccessibilityNode(
+        id: Int, parentId: Int, x: Double, y: Double, w: Double, h: Double,
+        label: String, hint: String, role: String, actions: String,
+    ) {
+        val actionList = if (actions.isEmpty()) emptyList() else actions.split(",")
+        pendingA11yNodes.add(
+            GlyphisAccessibilityHelper.SemanticsNode(
+                id, x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat(),
+                label, hint, role, actionList,
+            )
+        )
+    }
+
+    /** Called from JNI at the end of an accessibility tree batch (on main thread). */
+    @Suppress("unused")
+    fun onEndAccessibilityBatch() {
+        renderView.updateAccessibilityTree(ArrayList(pendingA11yNodes))
+    }
+
     // -- Asset loading --
 
     private fun loadAsset(filename: String): String? {
@@ -397,4 +435,5 @@ class GlyphisRuntime(
     private external fun nativeFireWsMessage(wsId: Int, data: String)
     private external fun nativeFireWsClose(wsId: Int, code: Int, reason: String)
     private external fun nativeFireWsError(wsId: Int, message: String)
+    private external fun nativeFireAccessibilityAction(nodeId: Int, action: String)
 }

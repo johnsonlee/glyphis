@@ -58,6 +58,7 @@ extern JSValueRef g_ws_open_cb;          /* __glyphis_onWsOpen        */
 extern JSValueRef g_ws_message_cb;       /* __glyphis_onWsMessage     */
 extern JSValueRef g_ws_close_cb;         /* __glyphis_onWsClose       */
 extern JSValueRef g_ws_error_cb;         /* __glyphis_onWsError       */
+extern JSValueRef g_a11y_action_cb;      /* __glyphis_onAccessibilityAction */
 
 /**
  * Look up and cache all __glyphis_* global callback functions.
