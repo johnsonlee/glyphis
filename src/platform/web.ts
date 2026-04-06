@@ -1,4 +1,4 @@
-import type { Platform, RenderCommand, InputEvent, TextInputConfig } from '../types';
+import type { Platform, RenderCommand, InputEvent, TextInputConfig, SemanticsNode } from '../types';
 
 export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
   const ctx = canvas.getContext('2d')!;
@@ -27,6 +27,8 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
   });
 
   var textInputElements: Map<string, HTMLInputElement | HTMLTextAreaElement> = new Map();
+  var ariaContainer: HTMLDivElement | null = null;
+  var ariaElements: Map<number, HTMLDivElement> = new Map();
 
   var imageCache: Map<string, HTMLImageElement> = new Map();
   var imageLoadCallback: ((id: string, w: number, h: number) => void) | null = null;
@@ -189,6 +191,93 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
         if (el.parentElement) el.parentElement.removeChild(el);
         textInputElements.delete(inputId);
       }
+    },
+
+    submitAccessibilityTree(nodes: SemanticsNode[]): void {
+      if (!ariaContainer) {
+        ariaContainer = document.createElement('div');
+        ariaContainer.style.position = 'absolute';
+        ariaContainer.style.top = '0';
+        ariaContainer.style.left = '0';
+        ariaContainer.style.width = '100%';
+        ariaContainer.style.height = '100%';
+        ariaContainer.style.pointerEvents = 'none';
+        ariaContainer.setAttribute('aria-hidden', 'false');
+        if (canvas.parentElement) {
+          canvas.parentElement.style.position = 'relative';
+          canvas.parentElement.appendChild(ariaContainer);
+        }
+      }
+
+      // Track which IDs are in the new tree
+      var activeIds = new Set<number>();
+
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        activeIds.add(node.id);
+
+        var el = ariaElements.get(node.id);
+        if (!el) {
+          el = document.createElement('div');
+          el.style.position = 'absolute';
+          el.style.overflow = 'hidden';
+          // Visually hidden but accessible to screen readers
+          el.style.opacity = '0';
+          el.style.fontSize = '1px';
+          el.tabIndex = -1;
+          if (ariaContainer) ariaContainer.appendChild(el);
+          ariaElements.set(node.id, el);
+        }
+
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+        el.style.width = node.width + 'px';
+        el.style.height = node.height + 'px';
+        el.setAttribute('role', node.role === 'none' ? 'presentation' : node.role);
+        el.setAttribute('aria-label', node.label);
+        if (node.hint) {
+          el.setAttribute('aria-roledescription', node.hint);
+        } else {
+          el.removeAttribute('aria-roledescription');
+        }
+
+        if (node.actions.indexOf('activate') >= 0) {
+          el.style.pointerEvents = 'auto';
+          el.style.cursor = 'pointer';
+          el.tabIndex = 0;
+          // Only bind events once
+          if (!el.dataset.bound) {
+            el.dataset.bound = '1';
+            var capturedNodeId = node.id;
+            el.addEventListener('click', function() {
+              if (inputCallback) inputCallback({ type: 'accessibilityaction', nodeId: capturedNodeId, action: 'activate' });
+            });
+            el.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (inputCallback) inputCallback({ type: 'accessibilityaction', nodeId: capturedNodeId, action: 'activate' });
+              }
+            });
+          }
+        }
+      }
+
+      // Remove elements not in new tree
+      var idsToRemove: number[] = [];
+      ariaElements.forEach(function(el, id) {
+        if (!activeIds.has(id)) {
+          if (el.parentElement) el.parentElement.removeChild(el);
+          idsToRemove.push(id);
+        }
+      });
+      for (var j = 0; j < idsToRemove.length; j++) {
+        ariaElements.delete(idsToRemove[j]);
+      }
+    },
+
+    onAccessibilityAction(callback: (nodeId: number, action: string) => void): void {
+      // Accessibility actions are routed through the inputCallback mechanism
+      // via the submitAccessibilityTree overlay click/keydown handlers
     },
   };
 }

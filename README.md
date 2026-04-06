@@ -160,7 +160,6 @@ Polyfilled on native (JSC) so npm packages work without modification:
 
 ## Not implemented yet
 
-- Accessibility (single-surface rendering bypasses platform accessibility trees)
 - GPU rendering (currently CPU 2D only)
 
 ## Development

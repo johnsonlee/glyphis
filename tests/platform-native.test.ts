@@ -17,6 +17,7 @@ const mockShowTextInput = mock(function (
 ) {});
 const mockUpdateTextInput = mock(function (_inputId: string, _x: number, _y: number, _w: number, _h: number) {});
 const mockHideTextInput = mock(function (_inputId: string) {});
+const mockSubmitAccessibilityTree = mock(function (_nodesJson: string) {});
 
 (globalThis as any).__glyphis_native = {
   submitRenderCommands: mockSubmitRenderCommands,
@@ -26,6 +27,7 @@ const mockHideTextInput = mock(function (_inputId: string) {});
   showTextInput: mockShowTextInput,
   updateTextInput: mockUpdateTextInput,
   hideTextInput: mockHideTextInput,
+  submitAccessibilityTree: mockSubmitAccessibilityTree,
   platform: 'ios' as const,
 };
 
@@ -49,6 +51,11 @@ beforeEach(function () {
   delete (globalThis as any).__glyphis_onTextSubmit;
   delete (globalThis as any).__glyphis_onTextFocus;
   delete (globalThis as any).__glyphis_onTextBlur;
+  delete (globalThis as any).__glyphis_onAccessibilityAction;
+  if ((globalThis as any).__glyphis_native) {
+    (globalThis as any).__glyphis_native.submitAccessibilityTree = mockSubmitAccessibilityTree;
+  }
+  mockSubmitAccessibilityTree.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -389,5 +396,88 @@ describe('text input events via onInput', function () {
     expect(receivedEvent).not.toBeNull();
     expect(receivedEvent.type).toBe('textblur');
     expect(receivedEvent.inputId).toBe('input-abc');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// submitAccessibilityTree
+// ---------------------------------------------------------------------------
+
+describe('submitAccessibilityTree', function () {
+  test('calls __glyphis_native.submitAccessibilityTree with JSON string', function () {
+    var platform = createNativePlatform();
+    var nodes = [
+      { id: 1, parentId: -1, x: 0, y: 0, width: 100, height: 50, label: 'Button', hint: '', role: 'button', actions: ['activate'] },
+    ];
+    platform.submitAccessibilityTree(nodes);
+
+    expect(mockSubmitAccessibilityTree).toHaveBeenCalledTimes(1);
+    var arg = mockSubmitAccessibilityTree.mock.calls[0][0];
+    expect(arg).toBe(JSON.stringify(nodes));
+  });
+
+  test('does not throw when __glyphis_native.submitAccessibilityTree is undefined', function () {
+    // Temporarily remove the method
+    var original = (globalThis as any).__glyphis_native.submitAccessibilityTree;
+    (globalThis as any).__glyphis_native.submitAccessibilityTree = undefined;
+
+    var platform = createNativePlatform();
+    expect(function () {
+      platform.submitAccessibilityTree([]);
+    }).not.toThrow();
+
+    // Restore
+    (globalThis as any).__glyphis_native.submitAccessibilityTree = original;
+  });
+
+  test('passes empty array as JSON', function () {
+    var platform = createNativePlatform();
+    platform.submitAccessibilityTree([]);
+
+    expect(mockSubmitAccessibilityTree).toHaveBeenCalledWith('[]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onAccessibilityAction
+// ---------------------------------------------------------------------------
+
+describe('onAccessibilityAction', function () {
+  test('registers __glyphis_onAccessibilityAction global', function () {
+    var platform = createNativePlatform();
+    var callback = mock(function () {});
+    platform.onAccessibilityAction(callback);
+
+    expect(typeof (globalThis as any).__glyphis_onAccessibilityAction).toBe('function');
+  });
+
+  test('__glyphis_onAccessibilityAction dispatches to callback', function () {
+    var platform = createNativePlatform();
+    var receivedNodeId: number = -1;
+    var receivedAction: string = '';
+    platform.onAccessibilityAction(function (nodeId: number, action: string) {
+      receivedNodeId = nodeId;
+      receivedAction = action;
+    });
+
+    (globalThis as any).__glyphis_onAccessibilityAction(42, 'activate');
+
+    expect(receivedNodeId).toBe(42);
+    expect(receivedAction).toBe('activate');
+  });
+
+  test('__glyphis_onAccessibilityAction with multiple calls', function () {
+    var platform = createNativePlatform();
+    var results: Array<{ nodeId: number; action: string }> = [];
+    platform.onAccessibilityAction(function (nodeId: number, action: string) {
+      results.push({ nodeId: nodeId, action: action });
+    });
+
+    (globalThis as any).__glyphis_onAccessibilityAction(1, 'activate');
+    (globalThis as any).__glyphis_onAccessibilityAction(2, 'scroll');
+
+    expect(results.length).toBe(2);
+    expect(results[0]).toEqual({ nodeId: 1, action: 'activate' });
+    expect(results[1]).toEqual({ nodeId: 2, action: 'scroll' });
   });
 });

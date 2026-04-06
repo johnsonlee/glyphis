@@ -1,6 +1,6 @@
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import type { GlyphisNode } from './node';
-import type { Style, TextInputConfig } from './types';
+import type { Style, TextInputConfig, AccessibilityRole } from './types';
 import { glyphisRenderer, showTextInput, hideTextInput, updateTextInput, textInputRegistry, scheduleRender } from './renderer';
 
 interface ViewProps {
@@ -11,6 +11,10 @@ interface ViewProps {
   onPointerMove?: (x: number, y: number) => void;
   onScrollDragStart?: (x: number, y: number) => void;
   onScrollDragEnd?: (x: number, y: number) => void;
+  accessible?: boolean;
+  accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHint?: string;
   children?: any;
 }
 
@@ -28,6 +32,15 @@ export function View(props: ViewProps): GlyphisNode {
   if (props.onScrollDragStart) glyphisRenderer.setProp(node, 'onScrollDragStart', props.onScrollDragStart);
   if (props.onScrollDragEnd) glyphisRenderer.setProp(node, 'onScrollDragEnd', props.onScrollDragEnd);
 
+  if (props.accessible || props.accessibilityLabel || props.accessibilityRole) {
+    node.accessibilityProps = {
+      accessible: props.accessible !== undefined ? props.accessible : true,
+      accessibilityLabel: props.accessibilityLabel,
+      accessibilityRole: props.accessibilityRole,
+      accessibilityHint: props.accessibilityHint,
+    };
+  }
+
   glyphisRenderer.insert(node, () => props.children);
 
   return node;
@@ -35,6 +48,10 @@ export function View(props: ViewProps): GlyphisNode {
 
 interface TextProps {
   style?: Style;
+  accessible?: boolean;
+  accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHint?: string;
   children?: any;
 }
 
@@ -44,6 +61,15 @@ export function Text(props: TextProps): GlyphisNode {
   glyphisRenderer.effect(() => {
     if (props.style) glyphisRenderer.setProp(node, 'style', props.style);
   });
+
+  if (props.accessibilityLabel) {
+    node.accessibilityProps = {
+      accessible: props.accessible !== false,
+      accessibilityLabel: props.accessibilityLabel,
+      accessibilityRole: props.accessibilityRole || 'text',
+      accessibilityHint: props.accessibilityHint,
+    };
+  }
 
   glyphisRenderer.insert(node, () => props.children);
 
@@ -55,6 +81,10 @@ interface ImageComponentProps {
   resizeMode?: 'cover' | 'contain' | 'stretch';
   style?: Style;
   onLoad?: (event: { width: number; height: number }) => void;
+  accessible?: boolean;
+  accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHint?: string;
 }
 
 export function Image(props: ImageComponentProps): GlyphisNode {
@@ -68,6 +98,15 @@ export function Image(props: ImageComponentProps): GlyphisNode {
   });
 
   if (props.onLoad) glyphisRenderer.setProp(node, 'onLoad', props.onLoad);
+
+  if (props.accessible || props.accessibilityLabel) {
+    node.accessibilityProps = {
+      accessible: props.accessible !== false,
+      accessibilityLabel: props.accessibilityLabel,
+      accessibilityRole: props.accessibilityRole || 'image',
+      accessibilityHint: props.accessibilityHint,
+    };
+  }
 
   glyphisRenderer.effect(function() {
     if (props.style) glyphisRenderer.setProp(node, 'style', props.style);
@@ -83,6 +122,9 @@ interface ButtonProps {
   textColor?: string;
   disabled?: boolean;
   style?: Style;
+  accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHint?: string;
 }
 
 export function Button(props: ButtonProps): GlyphisNode {
@@ -102,7 +144,7 @@ export function Button(props: ButtonProps): GlyphisNode {
     get children() { return props.title; },
   });
 
-  return glyphisRenderer.createComponent(View, {
+  var buttonNode = glyphisRenderer.createComponent(View, {
     onPressIn: function() { if (!props.disabled) setPressed(true); },
     onPressOut: function() { setPressed(false); },
     onPress: function() { if (!props.disabled && props.onPress) props.onPress(); },
@@ -126,6 +168,15 @@ export function Button(props: ButtonProps): GlyphisNode {
     },
     children: textChild,
   });
+
+  buttonNode.accessibilityProps = {
+    accessible: true,
+    accessibilityLabel: props.accessibilityLabel || props.title,
+    accessibilityRole: props.accessibilityRole || 'button',
+    accessibilityHint: props.accessibilityHint,
+  };
+
+  return buttonNode;
 }
 
 // --- TextInput ---
@@ -149,6 +200,9 @@ export interface TextInputProps {
   onBlur?: () => void;
   onSubmitEditing?: () => void;
   autoFocus?: boolean;
+  accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHint?: string;
 }
 
 function getAbsolutePosition(node: GlyphisNode): { x: number; y: number; width: number; height: number } {
@@ -293,6 +347,13 @@ export function TextInput(props: TextInputProps): GlyphisNode {
   });
 
   outerNode.textInputId = inputId;
+
+  outerNode.accessibilityProps = {
+    accessible: true,
+    accessibilityLabel: props.accessibilityLabel || props.placeholder || '',
+    accessibilityRole: props.accessibilityRole || 'text',
+    accessibilityHint: props.accessibilityHint,
+  };
 
   // Update registry with the actual node reference (was undefined during registration)
   var registryEntry = textInputRegistry.get(inputId);

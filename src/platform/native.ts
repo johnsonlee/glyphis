@@ -1,4 +1,4 @@
-import type { Platform, RenderCommand, InputEvent, TextInputConfig } from '../types';
+import type { Platform, RenderCommand, InputEvent, TextInputConfig, SemanticsNode } from '../types';
 
 declare const __glyphis_native: {
   submitRenderCommands(commands: any): void;
@@ -14,6 +14,7 @@ declare const __glyphis_native: {
   ): void;
   updateTextInput(inputId: string, x: number, y: number, width: number, height: number): void;
   hideTextInput(inputId: string): void;
+  submitAccessibilityTree?(nodesJson: string): void;
   platform: 'ios' | 'android';
 };
 
@@ -95,6 +96,18 @@ export function createNativePlatform(): NativePlatform {
 
     hideTextInput(inputId: string) {
       __glyphis_native.hideTextInput(inputId);
+    },
+
+    submitAccessibilityTree(nodes: SemanticsNode[]): void {
+      if (__glyphis_native.submitAccessibilityTree) {
+        __glyphis_native.submitAccessibilityTree(JSON.stringify(nodes));
+      }
+    },
+
+    onAccessibilityAction(callback: (nodeId: number, action: string) => void): void {
+      (globalThis as any).__glyphis_onAccessibilityAction = function(nodeId: number, action: string) {
+        callback(nodeId, action);
+      };
     },
 
     onViewportChange(callback: () => void) {

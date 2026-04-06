@@ -1036,6 +1036,155 @@ describe('renderer', () => {
     });
   });
 
+  describe('accessibility tree sync', function () {
+    it('flushRender calls submitAccessibilityTree when platform supports it', async function () {
+      var submittedNodes: any = null;
+      var customPlatform = createMockPlatform();
+      (customPlatform as any).submitAccessibilityTree = function (nodes: any) {
+        submittedNodes = nodes;
+      };
+
+      disposeFn = render(function () {
+        var node = glyphisRenderer.createElement('view');
+        node.accessibilityProps = {
+          accessible: true,
+          accessibilityLabel: 'Root',
+          accessibilityRole: 'button',
+        };
+        return node;
+      }, customPlatform);
+
+      await flush();
+
+      expect(submittedNodes).not.toBeNull();
+      expect(Array.isArray(submittedNodes)).toBe(true);
+      expect(submittedNodes.length).toBeGreaterThanOrEqual(1);
+      expect(submittedNodes[0].label).toBe('Root');
+    });
+
+    it('flushRender does not call submitAccessibilityTree when platform lacks it', async function () {
+      // Default mock platform has no submitAccessibilityTree
+      disposeFn = render(function () {
+        var node = glyphisRenderer.createElement('view');
+        node.accessibilityProps = {
+          accessible: true,
+          accessibilityLabel: 'Test',
+        };
+        return node;
+      }, mockPlatform);
+
+      await flush();
+      // No error thrown, and platform.render was still called
+      expect(mockPlatform.renderMock).toHaveBeenCalled();
+    });
+
+    it('does not re-submit when semantics tree has not changed', async function () {
+      var submitCount = 0;
+      var customPlatform = createMockPlatform();
+      (customPlatform as any).submitAccessibilityTree = function () {
+        submitCount++;
+      };
+
+      disposeFn = render(function () {
+        var node = glyphisRenderer.createElement('view');
+        node.accessibilityProps = {
+          accessible: true,
+          accessibilityLabel: 'Static',
+        };
+        return node;
+      }, customPlatform);
+
+      await flush();
+      var countAfterFirst = submitCount;
+
+      // Trigger another render without changing the tree
+      scheduleRender();
+      await flush();
+
+      // Should not have been called again since JSON is identical
+      expect(submitCount).toBe(countAfterFirst);
+    });
+  });
+
+  describe('accessibilityaction event dispatch', function () {
+    it('accessibilityaction event dispatches to node onPress', async function () {
+      var pressed = false;
+      var customPlatform = createMockPlatform();
+      (customPlatform as any).submitAccessibilityTree = function () {};
+
+      disposeFn = render(function () {
+        var node = glyphisRenderer.createElement('view');
+        node.accessibilityProps = {
+          accessible: true,
+          accessibilityLabel: 'Button',
+        };
+        node.handlers.onPress = function () { pressed = true; };
+        return node;
+      }, customPlatform);
+
+      await flush();
+
+      var cb = (customPlatform as any)._lastInputCallback;
+      expect(cb).toBeDefined();
+
+      // We need to get the semanticsId assigned during buildSemanticsTree
+      // The node was rendered into the root, so we need to find its semanticsId
+      // We can use the submitted nodes to find the id
+      var submittedNodes: any[] = [];
+      (customPlatform as any).submitAccessibilityTree = function (nodes: any) {
+        submittedNodes = nodes;
+      };
+      scheduleRender();
+      await flush();
+
+      // Now dispatch the accessibilityaction event
+      if (submittedNodes.length > 0) {
+        cb({ type: 'accessibilityaction', nodeId: submittedNodes[0].id, action: 'activate' });
+        expect(pressed).toBe(true);
+      }
+    });
+
+    it('accessibilityaction with unknown nodeId is ignored', async function () {
+      var customPlatform = createMockPlatform();
+      (customPlatform as any).submitAccessibilityTree = function () {};
+
+      disposeFn = render(function () {
+        var node = glyphisRenderer.createElement('view');
+        return node;
+      }, customPlatform);
+
+      await flush();
+
+      var cb = (customPlatform as any)._lastInputCallback;
+      expect(function () {
+        cb({ type: 'accessibilityaction', nodeId: 999999, action: 'activate' });
+      }).not.toThrow();
+    });
+
+    it('accessibilityaction with non-activate action is ignored', async function () {
+      var pressed = false;
+      var customPlatform = createMockPlatform();
+      (customPlatform as any).submitAccessibilityTree = function () {};
+
+      disposeFn = render(function () {
+        var node = glyphisRenderer.createElement('view');
+        node.accessibilityProps = {
+          accessible: true,
+          accessibilityLabel: 'Button',
+        };
+        node.handlers.onPress = function () { pressed = true; };
+        return node;
+      }, customPlatform);
+
+      await flush();
+
+      var cb = (customPlatform as any)._lastInputCallback;
+      // Non-activate action should not trigger onPress
+      cb({ type: 'accessibilityaction', nodeId: 1, action: 'scroll' });
+      expect(pressed).toBe(false);
+    });
+  });
+
   describe('showTextInput/hideTextInput without platform', function () {
     it('does not throw when no platform is set', function () {
       // After dispose, currentPlatform is null

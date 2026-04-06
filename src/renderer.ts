@@ -4,11 +4,13 @@ import { type GlyphisNode, createGlyphisNode } from './node';
 import { applyStyle } from './styles';
 import { generateCommands } from './commands';
 import { dispatchInput } from './events';
-import type { Platform, RenderPlatform, ImagePlatform, TextInputPlatform, Style, InputEvent, TextInputConfig } from './types';
+import { buildSemanticsTree, findNodeBySemanticsId } from './accessibility';
+import type { Platform, RenderPlatform, ImagePlatform, TextInputPlatform, Style, InputEvent, TextInputConfig, SemanticsNode } from './types';
 
 let renderScheduled = false;
 let rootNode: GlyphisNode | null = null;
 let currentPlatform: Platform | null = null;
+var lastSemanticsJson = '';
 
 // Use setTimeout(0) as fallback — queueMicrotask may not drain
 // in JSC's evaluateScript context (microtasks require runloop turn).
@@ -32,6 +34,16 @@ function flushRender(): void {
   const commands = generateCommands(rootNode);
   currentPlatform.render(commands);
   syncTextInputPositions();
+
+  // Sync accessibility tree (skip if unchanged)
+  if (currentPlatform.submitAccessibilityTree) {
+    var semanticsNodes = buildSemanticsTree(rootNode);
+    var semanticsJson = JSON.stringify(semanticsNodes);
+    if (semanticsJson !== lastSemanticsJson) {
+      lastSemanticsJson = semanticsJson;
+      currentPlatform.submitAccessibilityTree(semanticsNodes);
+    }
+  }
 }
 
 function syncTextInputPositions(): void {
@@ -212,6 +224,7 @@ export function render(code: () => any, platform: Platform): () => void {
   currentPlatform = platform;
   imageLoadCallbacks.clear();
   imageLoadListenerRegistered = false;
+  lastSemanticsJson = '';
 
   rootNode = initNode('__root');
   const viewport = platform.getViewport();
@@ -233,6 +246,11 @@ export function render(code: () => any, platform: Platform): () => void {
     } else if (event.type === 'textblur') {
       var cbs4 = textInputRegistry.get(event.inputId);
       if (cbs4 && cbs4.onBlur) cbs4.onBlur();
+    } else if (event.type === 'accessibilityaction') {
+      if (rootNode && event.action === 'activate') {
+        var target = findNodeBySemanticsId(rootNode, event.nodeId);
+        if (target && target.handlers.onPress) target.handlers.onPress();
+      }
     }
   });
 

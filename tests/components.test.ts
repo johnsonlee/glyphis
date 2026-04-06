@@ -110,6 +110,62 @@ describe('View component', () => {
     dispose();
   });
 
+  test('with accessibilityLabel sets accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var viewNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      viewNode = View({ accessibilityLabel: 'Main container', accessible: true });
+      return viewNode;
+    }, platform);
+
+    expect(viewNode!.accessibilityProps).toBeDefined();
+    expect(viewNode!.accessibilityProps!.accessible).toBe(true);
+    expect(viewNode!.accessibilityProps!.accessibilityLabel).toBe('Main container');
+    dispose();
+  });
+
+  test('with accessibilityRole sets accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var viewNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      viewNode = View({ accessibilityRole: 'header' });
+      return viewNode;
+    }, platform);
+
+    expect(viewNode!.accessibilityProps).toBeDefined();
+    expect(viewNode!.accessibilityProps!.accessible).toBe(true);
+    expect(viewNode!.accessibilityProps!.accessibilityRole).toBe('header');
+    dispose();
+  });
+
+  test('with accessibilityHint sets accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var viewNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      viewNode = View({ accessible: true, accessibilityHint: 'Tap to expand' });
+      return viewNode;
+    }, platform);
+
+    expect(viewNode!.accessibilityProps!.accessibilityHint).toBe('Tap to expand');
+    dispose();
+  });
+
+  test('without a11y props has no accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var viewNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      viewNode = View({ style: { width: 100 } });
+      return viewNode;
+    }, platform);
+
+    expect(viewNode!.accessibilityProps).toBeUndefined();
+    dispose();
+  });
+
   test('with children inserts children', () => {
     const platform = createMockPlatform();
     let viewNode: GlyphisNode | undefined;
@@ -171,6 +227,170 @@ describe('Text component', () => {
     const textChild = textNode!.children.find(c => c.tag === '__text');
     expect(textChild).toBeDefined();
     expect(textChild!.text).toBe('Hello World');
+    dispose();
+  });
+});
+
+describe('Text component accessibility', function () {
+  test('with accessibilityLabel sets accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var textNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      textNode = Text({ accessibilityLabel: 'Heading text', children: 'Title' });
+      return textNode;
+    }, platform);
+
+    expect(textNode!.accessibilityProps).toBeDefined();
+    expect(textNode!.accessibilityProps!.accessible).toBe(true);
+    expect(textNode!.accessibilityProps!.accessibilityLabel).toBe('Heading text');
+    expect(textNode!.accessibilityProps!.accessibilityRole).toBe('text');
+    dispose();
+  });
+
+  test('without accessibilityLabel has no accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var textNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      textNode = Text({ children: 'Plain text' });
+      return textNode;
+    }, platform);
+
+    expect(textNode!.accessibilityProps).toBeUndefined();
+    dispose();
+  });
+
+  test('with accessible:false and accessibilityLabel', function () {
+    var platform = createMockPlatform();
+    var textNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      textNode = Text({ accessible: false, accessibilityLabel: 'Decorative' });
+      return textNode;
+    }, platform);
+
+    expect(textNode!.accessibilityProps).toBeDefined();
+    expect(textNode!.accessibilityProps!.accessible).toBe(false);
+    dispose();
+  });
+});
+
+describe('Image component accessibility', function () {
+  test('with accessible sets accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/pic.jpg', accessible: true, accessibilityLabel: 'Profile photo' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.accessibilityProps).toBeDefined();
+    expect(imgNode!.accessibilityProps!.accessible).toBe(true);
+    expect(imgNode!.accessibilityProps!.accessibilityLabel).toBe('Profile photo');
+    expect(imgNode!.accessibilityProps!.accessibilityRole).toBe('image');
+    dispose();
+  });
+
+  test('with accessibilityLabel but no accessible flag', function () {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/pic.jpg', accessibilityLabel: 'Logo' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.accessibilityProps).toBeDefined();
+    expect(imgNode!.accessibilityProps!.accessible).toBe(true);
+    expect(imgNode!.accessibilityProps!.accessibilityLabel).toBe('Logo');
+    dispose();
+  });
+
+  test('without a11y props has no accessibilityProps', function () {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/pic.jpg' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.accessibilityProps).toBeUndefined();
+    dispose();
+  });
+
+  test('with custom accessibilityRole overrides default', function () {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({ src: 'https://example.com/pic.jpg', accessible: true, accessibilityRole: 'button' });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.accessibilityProps!.accessibilityRole).toBe('button');
+    dispose();
+  });
+
+  test('with accessibilityHint', function () {
+    var platform = createMockPlatform();
+    var imgNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      imgNode = Image({
+        src: 'https://example.com/pic.jpg',
+        accessible: true,
+        accessibilityHint: 'Shows full image',
+      });
+      return imgNode;
+    }, platform);
+
+    expect(imgNode!.accessibilityProps!.accessibilityHint).toBe('Shows full image');
+    dispose();
+  });
+});
+
+describe('TextInput component accessibility', function () {
+  test('has accessible:true with role text by default', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Email' });
+      return inputNode;
+    }, platform);
+
+    expect(inputNode!.accessibilityProps).toBeDefined();
+    expect(inputNode!.accessibilityProps!.accessible).toBe(true);
+    expect(inputNode!.accessibilityProps!.accessibilityRole).toBe('text');
+    dispose();
+  });
+
+  test('accessibilityLabel defaults to placeholder', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Search' });
+      return inputNode;
+    }, platform);
+
+    expect(inputNode!.accessibilityProps!.accessibilityLabel).toBe('Search');
+    dispose();
+  });
+
+  test('custom accessibilityLabel overrides placeholder', function () {
+    var platform = createMockPlatform();
+    var inputNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      inputNode = TextInput({ placeholder: 'Search', accessibilityLabel: 'Search field' });
+      return inputNode;
+    }, platform);
+
+    expect(inputNode!.accessibilityProps!.accessibilityLabel).toBe('Search field');
     dispose();
   });
 });
@@ -487,6 +707,60 @@ describe('Button component', () => {
     expect((btnNode!.style as any).marginTop).toBe(10);
     // Base style should still be present
     expect(btnNode!.style.borderRadius).toBe(4);
+    dispose();
+  });
+
+  test('has accessible:true by default with role button', function () {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'OK', onPress: function () {} });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.accessibilityProps).toBeDefined();
+    expect(btnNode!.accessibilityProps!.accessible).toBe(true);
+    expect(btnNode!.accessibilityProps!.accessibilityRole).toBe('button');
+    dispose();
+  });
+
+  test('accessibilityLabel defaults to title', function () {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Submit', onPress: function () {} });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.accessibilityProps!.accessibilityLabel).toBe('Submit');
+    dispose();
+  });
+
+  test('custom accessibilityLabel overrides title', function () {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'X', onPress: function () {}, accessibilityLabel: 'Close' });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.accessibilityProps!.accessibilityLabel).toBe('Close');
+    dispose();
+  });
+
+  test('accessibilityHint is set when provided', function () {
+    var platform = createMockPlatform();
+    var btnNode: GlyphisNode | undefined;
+
+    var dispose = render(function () {
+      btnNode = Button({ title: 'Go', onPress: function () {}, accessibilityHint: 'Navigates to next page' });
+      return btnNode;
+    }, platform);
+
+    expect(btnNode!.accessibilityProps!.accessibilityHint).toBe('Navigates to next page');
     dispose();
   });
 });

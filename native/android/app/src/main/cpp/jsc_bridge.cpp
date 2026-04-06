@@ -69,6 +69,7 @@ JSValueRef g_ws_open_cb         = NULL;
 JSValueRef g_ws_message_cb      = NULL;
 JSValueRef g_ws_close_cb        = NULL;
 JSValueRef g_ws_error_cb        = NULL;
+JSValueRef g_a11y_action_cb     = NULL;
 
 static void cache_one_callback(JSContextRef ctx, JSObjectRef global,
                                 const char* name, JSValueRef* slot)
@@ -107,6 +108,7 @@ void cache_js_callbacks(JSContextRef ctx) {
     cache_one_callback(ctx, global, "__glyphis_onWsMessage",    &g_ws_message_cb);
     cache_one_callback(ctx, global, "__glyphis_onWsClose",      &g_ws_close_cb);
     cache_one_callback(ctx, global, "__glyphis_onWsError",      &g_ws_error_cb);
+    cache_one_callback(ctx, global, "__glyphis_onAccessibilityAction", &g_a11y_action_cb);
 
     /* Remove internal callbacks from globalThis — C holds the only reference.
        App code cannot override or inspect them after this point. */
@@ -123,6 +125,7 @@ void cache_js_callbacks(JSContextRef ctx) {
     delete_global(ctx, global, "__glyphis_onWsMessage");
     delete_global(ctx, global, "__glyphis_onWsClose");
     delete_global(ctx, global, "__glyphis_onWsError");
+    delete_global(ctx, global, "__glyphis_onAccessibilityAction");
 }
 
 void call_js_callback(JSContextRef ctx, JSValueRef callback, size_t argc, JSValueRef argv[]) {
@@ -143,9 +146,10 @@ static void unprotect_cached_callbacks(JSContextRef ctx) {
         &g_touch_callback, &g_text_change_cb, &g_text_submit_cb,
         &g_text_focus_cb, &g_text_blur_cb, &g_image_loaded_cb,
         &g_viewport_update_cb, &g_fetch_response_cb, &g_fetch_error_cb,
-        &g_ws_open_cb, &g_ws_message_cb, &g_ws_close_cb, &g_ws_error_cb
+        &g_ws_open_cb, &g_ws_message_cb, &g_ws_close_cb, &g_ws_error_cb,
+        &g_a11y_action_cb
     };
-    for (int i = 0; i < 13; i++) {
+    for (int i = 0; i < 14; i++) {
         if (*slots[i]) {
             JSValueUnprotect(ctx, *slots[i]);
             *slots[i] = NULL;
@@ -451,6 +455,21 @@ Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireWsError(
     call_js_callback(g_context, g_ws_error_cb, 2, args);
     JSStringRelease(jsMsg);
     env->ReleaseStringUTFChars(message, cMsg);
+}
+
+JNIEXPORT void JNICALL
+Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireAccessibilityAction(
+    JNIEnv* env, jobject thiz, jint nodeId, jstring action)
+{
+    if (!g_context || !g_a11y_action_cb) return;
+    const char* cAction = env->GetStringUTFChars(action, NULL);
+    JSValueRef args[2];
+    args[0] = JSValueMakeNumber(g_context, nodeId);
+    JSStringRef jsAction = JSStringCreateWithUTF8CString(cAction);
+    args[1] = JSValueMakeString(g_context, jsAction);
+    call_js_callback(g_context, g_a11y_action_cb, 2, args);
+    JSStringRelease(jsAction);
+    env->ReleaseStringUTFChars(action, cAction);
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {

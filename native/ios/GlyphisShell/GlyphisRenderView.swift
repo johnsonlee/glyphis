@@ -1,5 +1,22 @@
 import UIKit
 
+// MARK: - Accessibility Element
+
+class GlyphisAccessibilityElement: UIAccessibilityElement {
+    let nodeId: Int
+    var onActivate: (() -> Void)?
+
+    init(accessibilityContainer container: Any, nodeId: Int) {
+        self.nodeId = nodeId
+        super.init(accessibilityContainer: container)
+    }
+
+    override func accessibilityActivate() -> Bool {
+        onActivate?()
+        return onActivate != nil
+    }
+}
+
 /// Custom UIView that renders Glyphis framework render commands using Core Graphics.
 /// Receives a JSON array of render command dictionaries from the JS runtime and
 /// draws them in `draw(_:)` using CGContext.
@@ -22,6 +39,71 @@ class GlyphisRenderView: UIView {
     var onTextChange: ((String, String) -> Void)?
     var onTextSubmit: ((String) -> Void)?
     var onTextFocus: ((String) -> Void)?
+
+    // MARK: - Accessibility
+
+    private var accessibilityNodes: [UIAccessibilityElement] = []
+    var onAccessibilityAction: ((Int, String) -> Void)?
+
+    override var isAccessibilityElement: Bool {
+        get { return false }
+        set {}
+    }
+
+    override var accessibilityElements: [Any]? {
+        get { return accessibilityNodes }
+        set {}
+    }
+
+    func updateAccessibilityTree(_ nodes: [[String: Any]]) {
+        var elements: [UIAccessibilityElement] = []
+
+        for node in nodes {
+            guard let id = node["id"] as? Int,
+                  let x = node["x"] as? Double,
+                  let y = node["y"] as? Double,
+                  let w = node["width"] as? Double,
+                  let h = node["height"] as? Double else { continue }
+
+            let label = node["label"] as? String ?? ""
+            let hint = node["hint"] as? String ?? ""
+            let role = node["role"] as? String ?? "none"
+            let actions = node["actions"] as? [String] ?? []
+
+            let element = GlyphisAccessibilityElement(accessibilityContainer: self, nodeId: id)
+            element.accessibilityLabel = label
+            element.accessibilityHint = hint
+            element.accessibilityTraits = mapTraits(role: role)
+
+            // Convert to screen coordinates
+            let rect = CGRect(x: x, y: y, width: w, height: h)
+            element.accessibilityFrame = UIAccessibility.convertToScreenCoordinates(rect, in: self)
+
+            if actions.contains("activate") {
+                element.onActivate = { [weak self] in
+                    self?.onAccessibilityAction?(id, "activate")
+                }
+            }
+
+            elements.append(element)
+        }
+
+        accessibilityNodes = elements
+        UIAccessibility.post(notification: .layoutChanged, argument: nil)
+    }
+
+    private func mapTraits(role: String) -> UIAccessibilityTraits {
+        switch role {
+        case "button": return .button
+        case "link": return .link
+        case "image": return .image
+        case "header": return .header
+        case "search": return .searchField
+        case "switch": return [.button]
+        case "text": return .staticText
+        default: return .none
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

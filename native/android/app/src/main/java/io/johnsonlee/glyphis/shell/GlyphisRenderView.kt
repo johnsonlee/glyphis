@@ -11,6 +11,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.view.ViewCompat
 
 /**
  * Custom View that renders Glyphis framework render commands using Android Canvas.
@@ -27,6 +28,19 @@ class GlyphisRenderView(context: Context) : View(context) {
 
     /** Called by [GlyphisRuntime] when a touch event occurs. Parameters: (eventType, x, y) */
     var onTouch: ((type: String, x: Float, y: Float) -> Unit)? = null
+
+    // -- Accessibility --
+
+    val accessibilityHelper = GlyphisAccessibilityHelper(this, density)
+
+    init {
+        ViewCompat.setAccessibilityDelegate(this, accessibilityHelper)
+    }
+
+    fun updateAccessibilityTree(nodes: List<GlyphisAccessibilityHelper.SemanticsNode>) {
+        accessibilityHelper.nodes = nodes
+        accessibilityHelper.invalidateRoot()
+    }
 
     fun setRenderCommands(commands: List<RenderCmd>) {
         this.renderCommands = commands

@@ -8,4 +8,5 @@ export type { ScrollViewProps, ScrollViewHandle } from './scroll-view';
 export { createWebPlatform } from './platform/web';
 export { createNativePlatform } from './platform/native';
 export { createSignal, createEffect, createMemo, createRoot, onMount, onCleanup, batch, untrack } from 'solid-js';
-export type { Style, RenderCommand, Platform, RenderPlatform, ImagePlatform, TextInputPlatform, InputEvent, TextInputConfig } from './types';
+export type { Style, RenderCommand, Platform, RenderPlatform, ImagePlatform, TextInputPlatform, AccessibilityPlatform, InputEvent, TextInputConfig, AccessibilityProps, AccessibilityRole, SemanticsNode } from './types';
+export { buildSemanticsTree } from './accessibility';

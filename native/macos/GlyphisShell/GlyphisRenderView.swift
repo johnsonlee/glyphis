@@ -1,5 +1,46 @@
 import AppKit
 
+// MARK: - Accessibility Element
+
+class GlyphisAccessibilityElement: NSAccessibilityElement {
+    let nodeId: Int
+    var onActivate: (() -> Void)?
+    var a11yRole: NSAccessibility.Role = .unknown
+    var a11yFrame: NSRect = .zero
+    var a11yLabel: String = ""
+    var a11yHint: String = ""
+
+    init(nodeId: Int) {
+        self.nodeId = nodeId
+        super.init()
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        return a11yRole
+    }
+
+    override func accessibilityLabel() -> String? {
+        return a11yLabel
+    }
+
+    override func accessibilityHelp() -> String? {
+        return a11yHint.isEmpty ? nil : a11yHint
+    }
+
+    override func accessibilityFrame() -> NSRect {
+        return a11yFrame
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onActivate?()
+        return onActivate != nil
+    }
+
+    override func isAccessibilityElement() -> Bool {
+        return true
+    }
+}
+
 /// Custom NSView that renders Glyphis framework render commands using Core Graphics.
 /// Receives a JSON array of render command dictionaries from the JS runtime and
 /// draws them in `draw(_:)` using CGContext.
@@ -22,6 +63,73 @@ class GlyphisRenderView: NSView {
     var onTextChange: ((String, String) -> Void)?
     var onTextSubmit: ((String) -> Void)?
     var onTextFocus: ((String) -> Void)?
+
+    // MARK: - Accessibility
+
+    private var accessibilityNodes: [GlyphisAccessibilityElement] = []
+    var onAccessibilityAction: ((Int, String) -> Void)?
+
+    override func isAccessibilityElement() -> Bool {
+        return false
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        return accessibilityNodes
+    }
+
+    func updateAccessibilityTree(_ nodes: [[String: Any]]) {
+        var elements: [GlyphisAccessibilityElement] = []
+
+        for node in nodes {
+            guard let id = node["id"] as? Int,
+                  let x = node["x"] as? Double,
+                  let y = node["y"] as? Double,
+                  let w = node["width"] as? Double,
+                  let h = node["height"] as? Double else { continue }
+
+            let label = node["label"] as? String ?? ""
+            let hint = node["hint"] as? String ?? ""
+            let role = node["role"] as? String ?? "none"
+            let actions = node["actions"] as? [String] ?? []
+
+            let element = GlyphisAccessibilityElement(nodeId: id)
+            element.a11yLabel = label
+            element.a11yHint = hint
+            element.a11yRole = mapRole(role: role)
+
+            // Convert view-local rect to screen coordinates
+            let viewRect = NSRect(x: x, y: y, width: w, height: h)
+            if let screenRect = window?.convertToScreen(convert(viewRect, to: nil)) {
+                element.a11yFrame = screenRect
+            } else {
+                element.a11yFrame = viewRect
+            }
+
+            if actions.contains("activate") {
+                element.onActivate = { [weak self] in
+                    self?.onAccessibilityAction?(id, "activate")
+                }
+            }
+
+            elements.append(element)
+        }
+
+        accessibilityNodes = elements
+        NSAccessibility.post(element: self, notification: .layoutChanged)
+    }
+
+    private func mapRole(role: String) -> NSAccessibility.Role {
+        switch role {
+        case "button": return .button
+        case "link": return .link
+        case "image": return .image
+        case "header": return .staticText
+        case "search": return .searchField
+        case "switch": return .checkBox
+        case "text": return .staticText
+        default: return .unknown
+        }
+    }
 
     /// Flip the coordinate system so the origin is at the top-left, matching iOS.
     override var isFlipped: Bool { return true }
