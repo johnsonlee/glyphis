@@ -91,6 +91,8 @@ async function buildIOS() {
     'HEADER_SEARCH_PATHS=' + yogaDir,
     'LIBRARY_SEARCH_PATHS=' + buildDir,
     'OTHER_LDFLAGS=-lyoga -lc++',
+    'ARCHS=arm64',
+    'ONLY_ACTIVE_ARCH=NO',
     'SWIFT_OBJC_BRIDGING_HEADER=' + join(nativeDir, 'GlyphisShell', 'yoga-bridge.h'),
     'build',
   ], { cwd: nativeDir, stdout: 'pipe', stderr: 'pipe' });
