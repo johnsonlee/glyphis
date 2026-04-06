@@ -348,47 +348,49 @@ class GlyphisRuntime {
 
         // fetch polyfill
         context.evaluateScript("""
-            var __glyphis_nextFetchId = 1;
-            var __glyphis_fetchCallbacks = {};
+            (function() {
+                var nextId = 1;
+                var callbacks = {};
 
-            globalThis.fetch = function(url, options) {
-                return new Promise(function(resolve, reject) {
-                    var reqId = __glyphis_nextFetchId++;
-                    __glyphis_fetchCallbacks[reqId] = { resolve: resolve, reject: reject };
-                    var method = (options && options.method) || 'GET';
-                    var headers = (options && options.headers) || {};
-                    var body = (options && options.body) || '';
-                    __glyphis_native.fetch(reqId, url, method, JSON.stringify(headers), body);
-                });
-            };
-
-            globalThis.__glyphis_onFetchResponse = function(reqId, status, headersJson, body) {
-                var cb = __glyphis_fetchCallbacks[reqId];
-                if (!cb) return;
-                delete __glyphis_fetchCallbacks[reqId];
-                var headers = {};
-                try { headers = JSON.parse(headersJson); } catch(e) {}
-                var response = {
-                    ok: status >= 200 && status < 300,
-                    status: status,
-                    statusText: '',
-                    headers: {
-                        get: function(name) { return headers[name.toLowerCase()] || null; },
-                        has: function(name) { return name.toLowerCase() in headers; }
-                    },
-                    text: function() { return Promise.resolve(body); },
-                    json: function() { return Promise.resolve(JSON.parse(body)); },
-                    clone: function() { return response; }
+                globalThis.fetch = function(url, options) {
+                    return new Promise(function(resolve, reject) {
+                        var reqId = nextId++;
+                        callbacks[reqId] = { resolve: resolve, reject: reject };
+                        var method = (options && options.method) || 'GET';
+                        var headers = (options && options.headers) || {};
+                        var body = (options && options.body) || '';
+                        __glyphis_native.fetch(reqId, url, method, JSON.stringify(headers), body);
+                    });
                 };
-                cb.resolve(response);
-            };
 
-            globalThis.__glyphis_onFetchError = function(reqId, message) {
-                var cb = __glyphis_fetchCallbacks[reqId];
-                if (!cb) return;
-                delete __glyphis_fetchCallbacks[reqId];
-                cb.reject(new Error(message));
-            };
+                globalThis.__glyphis_onFetchResponse = function(reqId, status, headersJson, body) {
+                    var cb = callbacks[reqId];
+                    if (!cb) return;
+                    delete callbacks[reqId];
+                    var headers = {};
+                    try { headers = JSON.parse(headersJson); } catch(e) {}
+                    var response = {
+                        ok: status >= 200 && status < 300,
+                        status: status,
+                        statusText: '',
+                        headers: {
+                            get: function(name) { return headers[name.toLowerCase()] || null; },
+                            has: function(name) { return name.toLowerCase() in headers; }
+                        },
+                        text: function() { return Promise.resolve(body); },
+                        json: function() { return Promise.resolve(JSON.parse(body)); },
+                        clone: function() { return response; }
+                    };
+                    cb.resolve(response);
+                };
+
+                globalThis.__glyphis_onFetchError = function(reqId, message) {
+                    var cb = callbacks[reqId];
+                    if (!cb) return;
+                    delete callbacks[reqId];
+                    cb.reject(new Error(message));
+                };
+            })();
         """)
 
         // performance.now
@@ -404,17 +406,19 @@ class GlyphisRuntime {
 
         // localStorage (backed by UserDefaults)
         context.evaluateScript("""
-            var __storage = {};
-            globalThis.localStorage = {
-                getItem: function(key) { return __storage[key] || null; },
-                setItem: function(key, value) { __storage[key] = String(value); __glyphis_native.storageSet(key, String(value)); },
-                removeItem: function(key) { delete __storage[key]; __glyphis_native.storageRemove(key); },
-                clear: function() { __storage = {}; __glyphis_native.storageClear(); },
-                get length() { return Object.keys(__storage).length; },
-                key: function(i) { var keys = Object.keys(__storage); return keys[i] || null; }
-            };
-            var __storedData = __glyphis_native.storageGetAll();
-            if (__storedData) { try { __storage = JSON.parse(__storedData); } catch(e) {} }
+            (function() {
+                var storage = {};
+                globalThis.localStorage = {
+                    getItem: function(key) { return storage[key] || null; },
+                    setItem: function(key, value) { storage[key] = String(value); __glyphis_native.storageSet(key, String(value)); },
+                    removeItem: function(key) { delete storage[key]; __glyphis_native.storageRemove(key); },
+                    clear: function() { storage = {}; __glyphis_native.storageClear(); },
+                    get length() { return Object.keys(storage).length; },
+                    key: function(i) { var keys = Object.keys(storage); return keys[i] || null; }
+                };
+                var storedData = __glyphis_native.storageGetAll();
+                if (storedData) { try { storage = JSON.parse(storedData); } catch(e) {} }
+            })();
         """)
 
         // URLSearchParams + URL
@@ -467,34 +471,36 @@ class GlyphisRuntime {
 
         // btoa / atob (Base64)
         context.evaluateScript("""
-            var __b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-            globalThis.btoa = function(str) {
-                var out = '';
-                for (var i = 0; i < str.length; i += 3) {
-                    var c1 = str.charCodeAt(i);
-                    var c2 = i+1 < str.length ? str.charCodeAt(i+1) : 0;
-                    var c3 = i+2 < str.length ? str.charCodeAt(i+2) : 0;
-                    out += __b64chars[c1 >> 2];
-                    out += __b64chars[((c1 & 3) << 4) | (c2 >> 4)];
-                    out += i+1 < str.length ? __b64chars[((c2 & 15) << 2) | (c3 >> 6)] : '=';
-                    out += i+2 < str.length ? __b64chars[c3 & 63] : '=';
-                }
-                return out;
-            };
-            globalThis.atob = function(str) {
-                str = str.replace(/=/g, '');
-                var out = '';
-                for (var i = 0; i < str.length; i += 4) {
-                    var c1 = __b64chars.indexOf(str[i]);
-                    var c2 = __b64chars.indexOf(str[i+1]);
-                    var c3 = i+2 < str.length ? __b64chars.indexOf(str[i+2]) : 0;
-                    var c4 = i+3 < str.length ? __b64chars.indexOf(str[i+3]) : 0;
-                    out += String.fromCharCode((c1 << 2) | (c2 >> 4));
-                    if (i+2 < str.length) out += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2));
-                    if (i+3 < str.length) out += String.fromCharCode(((c3 & 3) << 6) | c4);
-                }
-                return out;
-            };
+            (function() {
+                var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                globalThis.btoa = function(str) {
+                    var out = '';
+                    for (var i = 0; i < str.length; i += 3) {
+                        var c1 = str.charCodeAt(i);
+                        var c2 = i+1 < str.length ? str.charCodeAt(i+1) : 0;
+                        var c3 = i+2 < str.length ? str.charCodeAt(i+2) : 0;
+                        out += chars[c1 >> 2];
+                        out += chars[((c1 & 3) << 4) | (c2 >> 4)];
+                        out += i+1 < str.length ? chars[((c2 & 15) << 2) | (c3 >> 6)] : '=';
+                        out += i+2 < str.length ? chars[c3 & 63] : '=';
+                    }
+                    return out;
+                };
+                globalThis.atob = function(str) {
+                    str = str.replace(/=/g, '');
+                    var out = '';
+                    for (var i = 0; i < str.length; i += 4) {
+                        var c1 = chars.indexOf(str[i]);
+                        var c2 = chars.indexOf(str[i+1]);
+                        var c3 = i+2 < str.length ? chars.indexOf(str[i+2]) : 0;
+                        var c4 = i+3 < str.length ? chars.indexOf(str[i+3]) : 0;
+                        out += String.fromCharCode((c1 << 2) | (c2 >> 4));
+                        if (i+2 < str.length) out += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2));
+                        if (i+3 < str.length) out += String.fromCharCode(((c3 & 3) << 6) | c4);
+                    }
+                    return out;
+                };
+            })();
         """)
 
         // TextEncoder / TextDecoder (UTF-8 only)
@@ -550,64 +556,66 @@ class GlyphisRuntime {
 
         // WebSocket polyfill
         context.evaluateScript("""
-            var __glyphis_nextWsId = 1;
-            var __glyphis_wsInstances = {};
+            (function() {
+                var nextId = 1;
+                var instances = {};
 
-            globalThis.WebSocket = function(url, protocols) {
-                var wsId = __glyphis_nextWsId++;
-                this._wsId = wsId;
-                this.url = url;
-                this.readyState = 0;
-                this.onopen = null;
-                this.onmessage = null;
-                this.onclose = null;
-                this.onerror = null;
-                __glyphis_wsInstances[wsId] = this;
-                __glyphis_native.wsConnect(wsId, url, protocols || '');
-            };
+                globalThis.WebSocket = function(url, protocols) {
+                    var wsId = nextId++;
+                    this._wsId = wsId;
+                    this.url = url;
+                    this.readyState = 0;
+                    this.onopen = null;
+                    this.onmessage = null;
+                    this.onclose = null;
+                    this.onerror = null;
+                    instances[wsId] = this;
+                    __glyphis_native.wsConnect(wsId, url, protocols || '');
+                };
 
-            WebSocket.CONNECTING = 0;
-            WebSocket.OPEN = 1;
-            WebSocket.CLOSING = 2;
-            WebSocket.CLOSED = 3;
+                WebSocket.CONNECTING = 0;
+                WebSocket.OPEN = 1;
+                WebSocket.CLOSING = 2;
+                WebSocket.CLOSED = 3;
 
-            WebSocket.prototype.send = function(data) {
-                if (this.readyState !== 1) throw new Error('WebSocket is not open');
-                __glyphis_native.wsSend(this._wsId, String(data));
-            };
+                WebSocket.prototype.send = function(data) {
+                    if (this.readyState !== 1) throw new Error('WebSocket is not open');
+                    __glyphis_native.wsSend(this._wsId, String(data));
+                };
 
-            WebSocket.prototype.close = function(code, reason) {
-                if (this.readyState >= 2) return;
-                this.readyState = 2;
-                __glyphis_native.wsClose(this._wsId, code || 1000, reason || '');
-            };
+                WebSocket.prototype.close = function(code, reason) {
+                    if (this.readyState >= 2) return;
+                    this.readyState = 2;
+                    __glyphis_native.wsClose(this._wsId, code || 1000, reason || '');
+                };
 
-            globalThis.__glyphis_onWsOpen = function(wsId) {
-                var ws = __glyphis_wsInstances[wsId];
-                if (!ws) return;
-                ws.readyState = 1;
-                if (ws.onopen) ws.onopen({ type: 'open' });
-            };
+                globalThis.__glyphis_onWsOpen = function(wsId) {
+                    var ws = instances[wsId];
+                    if (!ws) return;
+                    ws.readyState = 1;
+                    if (ws.onopen) ws.onopen({ type: 'open' });
+                };
 
-            globalThis.__glyphis_onWsMessage = function(wsId, data) {
-                var ws = __glyphis_wsInstances[wsId];
-                if (!ws) return;
-                if (ws.onmessage) ws.onmessage({ type: 'message', data: data });
-            };
+                globalThis.__glyphis_onWsMessage = function(wsId, data) {
+                    var ws = instances[wsId];
+                    if (!ws) return;
+                    if (ws.onmessage) ws.onmessage({ type: 'message', data: data });
+                };
 
-            globalThis.__glyphis_onWsClose = function(wsId, code, reason) {
-                var ws = __glyphis_wsInstances[wsId];
-                if (!ws) return;
-                ws.readyState = 3;
-                if (ws.onclose) ws.onclose({ type: 'close', code: code, reason: reason, wasClean: code === 1000 });
-                delete __glyphis_wsInstances[wsId];
-            };
+                globalThis.__glyphis_onWsClose = function(wsId, code, reason) {
+                    var ws = instances[wsId];
+                    if (!ws) return;
+                    ws.readyState = 3;
+                    if (ws.onclose) ws.onclose({ type: 'close', code: code, reason: reason, wasClean: code === 1000 });
+                    delete instances[wsId];
+                };
 
-            globalThis.__glyphis_onWsError = function(wsId, message) {
-                var ws = __glyphis_wsInstances[wsId];
-                if (!ws) return;
-                if (ws.onerror) ws.onerror({ type: 'error', message: message });
-            };
+                globalThis.__glyphis_onWsError = function(wsId, message) {
+                    var ws = instances[wsId];
+                    if (!ws) return;
+                    if (ws.onerror) ws.onerror({ type: 'error', message: message });
+                };
+            })();
         """)
 
         // Error handling
