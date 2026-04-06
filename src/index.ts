@@ -10,3 +10,5 @@ export { createNativePlatform } from './platform/native';
 export { createSignal, createEffect, createMemo, createRoot, onMount, onCleanup, batch, untrack } from 'solid-js';
 export type { Style, RenderCommand, Platform, RenderPlatform, ImagePlatform, TextInputPlatform, AccessibilityPlatform, InputEvent, TextInputConfig, AccessibilityProps, AccessibilityRole, SemanticsNode } from './types';
 export { buildSemanticsTree } from './accessibility';
+export { enableTracing, disableTracing, isTracingEnabled, beginSpan, endSpan, traceSync, flushTraceEvents, getTraceEvents, clearTraceEvents } from './trace';
+export type { TraceEvent, SpanHandle } from './trace';

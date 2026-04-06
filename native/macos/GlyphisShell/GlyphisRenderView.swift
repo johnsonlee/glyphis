@@ -124,7 +124,7 @@ class GlyphisRenderView: NSView {
         case "link": return .link
         case "image": return .image
         case "header": return .staticText
-        case "search": return .searchField
+        case "search": return .textField
         case "switch": return .checkBox
         case "text": return .staticText
         default: return .unknown
