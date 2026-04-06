@@ -51,6 +51,7 @@ export function beginSpan(name: string, category?: string, args?: Record<string,
 export function endSpan(handle: SpanHandle, args?: Record<string, unknown>): void {
   if (handle._index === -1) return;
   const begin = _events[handle._index];
+  if (!begin) return;
   const event: TraceEvent = {
     name: begin.name,
     cat: begin.cat,
