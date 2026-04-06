@@ -132,12 +132,30 @@ The Platform interface is split into focused capabilities:
 - `ImagePlatform` — image loading (loadImage, onImageLoaded)
 - `TextInputPlatform` — text input overlay (showTextInput, updateTextInput, hideTextInput)
 
+### Zero-JSON pipeline
+
+No JSON serialization on any hot path:
+- **Render commands**: JS passes the command array directly. C reads properties via `JSObjectGetProperty`, dispatches typed JNI calls per command. No `JSON.stringify`, no `JSONArray` parsing.
+- **TextInput config**: 15 typed args passed directly via JSC → JNI. No JSON.
+- **Native→JS callbacks**: Cached `JSValueRef` + `JSObjectCallAsFunction`. No `evaluateScript` string interpolation.
+- **Timer callbacks**: C stores `JSValueRef` at registration, calls directly on fire. No eval.
+
+### Browser API polyfills
+
+Polyfilled on native JSC so npm packages work without modification:
+- `fetch` (URLSession / HttpURLConnection backed)
+- `localStorage` (UserDefaults / SharedPreferences backed)
+- `URL` / `URLSearchParams`, `TextEncoder` / `TextDecoder`, `atob` / `btoa`
+- `crypto.getRandomValues`, `AbortController`
+- `setTimeout` / `setInterval`, `queueMicrotask`, `MessageChannel`, `performance.now`
+
 ## Resolved
 
 - **Text input**: Native overlay text fields (NSTextField/UITextField/EditText) positioned over Canvas. Handles IME, autocorrect, clipboard natively.
 - **Scroll physics**: Friction-based momentum, rubber-band overscroll, spring snap-back. Pixel-level smooth scrolling.
-- **View recycling**: RecyclerList with signal-based slot recycling. 10K rows in 10ms.
+- **View recycling**: RecyclerList with signal-based slot recycling. 10K rows in 6ms (131x faster than baseline).
 - **Batch measure**: Eliminated JS↔native bridge calls during layout — text measured directly in native C++/ObjC.
+- **Zero-JSON pipeline**: All hot-path serialization eliminated. Direct JSValueRef property access + typed JNI calls.
 
 ## Open Questions
 
