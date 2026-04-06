@@ -83,8 +83,17 @@ static void cache_one_callback(JSContextRef ctx, JSObjectRef global,
     JSStringRelease(jsName);
 }
 
+/* Delete a global property after caching its JSValueRef */
+static void delete_global(JSContextRef ctx, JSObjectRef global, const char* name) {
+    JSStringRef jsName = JSStringCreateWithUTF8CString(name);
+    JSObjectDeleteProperty(ctx, global, jsName, NULL);
+    JSStringRelease(jsName);
+}
+
 void cache_js_callbacks(JSContextRef ctx) {
     JSObjectRef global = JSContextGetGlobalObject(ctx);
+
+    /* Cache JSValueRef for each callback (JSValueProtect keeps them alive) */
     cache_one_callback(ctx, global, "__glyphis_handleTouch",   &g_touch_callback);
     cache_one_callback(ctx, global, "__glyphis_onTextChange",  &g_text_change_cb);
     cache_one_callback(ctx, global, "__glyphis_onTextSubmit",  &g_text_submit_cb);
@@ -98,6 +107,22 @@ void cache_js_callbacks(JSContextRef ctx) {
     cache_one_callback(ctx, global, "__glyphis_onWsMessage",    &g_ws_message_cb);
     cache_one_callback(ctx, global, "__glyphis_onWsClose",      &g_ws_close_cb);
     cache_one_callback(ctx, global, "__glyphis_onWsError",      &g_ws_error_cb);
+
+    /* Remove internal callbacks from globalThis — C holds the only reference.
+       App code cannot override or inspect them after this point. */
+    delete_global(ctx, global, "__glyphis_handleTouch");
+    delete_global(ctx, global, "__glyphis_onTextChange");
+    delete_global(ctx, global, "__glyphis_onTextSubmit");
+    delete_global(ctx, global, "__glyphis_onTextFocus");
+    delete_global(ctx, global, "__glyphis_onTextBlur");
+    delete_global(ctx, global, "__glyphis_onImageLoaded");
+    delete_global(ctx, global, "__glyphis_updateViewport");
+    delete_global(ctx, global, "__glyphis_onFetchResponse");
+    delete_global(ctx, global, "__glyphis_onFetchError");
+    delete_global(ctx, global, "__glyphis_onWsOpen");
+    delete_global(ctx, global, "__glyphis_onWsMessage");
+    delete_global(ctx, global, "__glyphis_onWsClose");
+    delete_global(ctx, global, "__glyphis_onWsError");
 }
 
 void call_js_callback(JSContextRef ctx, JSValueRef callback, size_t argc, JSValueRef argv[]) {

@@ -76,6 +76,18 @@ class GlyphisRuntime {
         renderView?.onTextFocus = { [weak self] inputId in
             self?.textFocusCallback?.call(withArguments: [inputId])
         }
+
+        // Remove internal callbacks from globalThis — Swift holds the only reference.
+        // App code cannot override or inspect them after this point.
+        let internals = [
+            "__glyphis_handleTouch", "__glyphis_onTextChange", "__glyphis_onTextSubmit",
+            "__glyphis_onTextFocus", "__glyphis_onTextBlur", "__glyphis_onImageLoaded",
+            "__glyphis_updateViewport", "__glyphis_onFetchResponse", "__glyphis_onFetchError",
+            "__glyphis_onWsOpen", "__glyphis_onWsMessage", "__glyphis_onWsClose", "__glyphis_onWsError",
+        ]
+        for name in internals {
+            context.evaluateScript("delete globalThis.\(name)")
+        }
     }
 
     private func setupImageLoader() {
