@@ -1,11 +1,14 @@
 import type { GlyphisNode } from './node';
 import type { SemanticsNode } from './types';
+import { beginSpan, endSpan } from './trace';
 
 var nextSemanticsId = 1;
 
 export function buildSemanticsTree(root: GlyphisNode): SemanticsNode[] {
+  var span = beginSpan('buildSemanticsTree', 'accessibility');
   var nodes: SemanticsNode[] = [];
   walkForSemantics(root, 0, 0, -1, nodes);
+  endSpan(span, { nodeCount: nodes.length });
   return nodes;
 }
 

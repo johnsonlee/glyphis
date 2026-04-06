@@ -1,5 +1,6 @@
 import type { InputEvent } from './types';
 import type { GlyphisNode } from './node';
+import { beginSpan, endSpan } from './trace';
 
 export function hitTest(root: GlyphisNode, x: number, y: number): GlyphisNode | null {
   return hitTestNode(root, 0, 0, x, y);
@@ -87,8 +88,11 @@ var pressCancelled = false;
 var DRAG_THRESHOLD = 5;
 
 export function dispatchInput(root: GlyphisNode, event: InputEvent): void {
+  var dispatchSpan = beginSpan('dispatchInput', 'events', { eventType: event.type });
   if (event.type === 'pointerdown') {
+    var htSpan = beginSpan('hitTest', 'events');
     var target = hitTest(root, event.x, event.y);
+    endSpan(htSpan);
     pressStartX = event.x;
     pressStartY = event.y;
     pressCancelled = false;
@@ -141,7 +145,9 @@ export function dispatchInput(root: GlyphisNode, event: InputEvent): void {
       }
       // Only fire onPress if we did not drag
       if (!pressCancelled) {
+        var htSpan2 = beginSpan('hitTest', 'events');
         var target2 = hitTest(root, event.x, event.y);
+        endSpan(htSpan2);
         if (target2 === pressedNode && pressedNode.handlers.onPress) {
           pressedNode.handlers.onPress();
         }
@@ -150,4 +156,5 @@ export function dispatchInput(root: GlyphisNode, event: InputEvent): void {
     }
     scrollNode = null;
   }
+  endSpan(dispatchSpan);
 }

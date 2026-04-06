@@ -6,6 +6,7 @@ import { generateCommands } from './commands';
 import { dispatchInput } from './events';
 import { buildSemanticsTree, findNodeBySemanticsId } from './accessibility';
 import type { Platform, RenderPlatform, ImagePlatform, TextInputPlatform, Style, InputEvent, TextInputConfig, SemanticsNode } from './types';
+import { beginSpan, endSpan } from './trace';
 
 let renderScheduled = false;
 let rootNode: GlyphisNode | null = null;
@@ -27,23 +28,35 @@ function scheduleRender(): void {
 function flushRender(): void {
   renderScheduled = false;
   if (!rootNode || !currentPlatform) return;
+  var frameSpan = beginSpan('flushRender', 'render');
   const viewport = currentPlatform.getViewport();
   rootNode.yoga.setWidth(viewport.width);
   rootNode.yoga.setHeight(viewport.height);
+  var layoutSpan = beginSpan('yoga.calculateLayout', 'render');
   rootNode.yoga.calculateLayout(viewport.width, viewport.height, Direction.LTR);
+  endSpan(layoutSpan);
+  var cmdSpan = beginSpan('generateCommands', 'render');
   const commands = generateCommands(rootNode);
+  endSpan(cmdSpan, { commandCount: commands.length });
+  var drawSpan = beginSpan('platform.render', 'render');
   currentPlatform.render(commands);
+  endSpan(drawSpan);
+  var tiSpan = beginSpan('syncTextInputPositions', 'render');
   syncTextInputPositions();
+  endSpan(tiSpan);
 
   // Sync accessibility tree (skip if unchanged)
   if (currentPlatform.submitAccessibilityTree) {
+    var a11ySpan = beginSpan('accessibilitySync', 'render');
     var semanticsNodes = buildSemanticsTree(rootNode);
     var semanticsJson = JSON.stringify(semanticsNodes);
     if (semanticsJson !== lastSemanticsJson) {
       lastSemanticsJson = semanticsJson;
       currentPlatform.submitAccessibilityTree(semanticsNodes);
     }
+    endSpan(a11ySpan);
   }
+  endSpan(frameSpan);
 }
 
 function syncTextInputPositions(): void {
@@ -113,12 +126,14 @@ function setupImageLoad(node: GlyphisNode): void {
   var platform = currentPlatform;
 
   imageLoadCallbacks.set(imageId, function(width: number, height: number) {
-    if (!node.imageProps) return;
+    var imgSpan = beginSpan('imageLoadCallback', 'render');
+    if (!node.imageProps) { endSpan(imgSpan); return; }
     node.imageProps.loaded = true;
     if (node.handlers.onLoad) {
       node.handlers.onLoad({ width: width, height: height });
     }
     scheduleRender();
+    endSpan(imgSpan);
   });
 
   if (!imageLoadListenerRegistered && platform.onImageLoaded) {
