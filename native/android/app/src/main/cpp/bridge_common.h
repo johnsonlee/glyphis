@@ -54,6 +54,10 @@ extern JSValueRef g_image_loaded_cb;     /* __glyphis_onImageLoaded   */
 extern JSValueRef g_viewport_update_cb;  /* __glyphis_updateViewport  */
 extern JSValueRef g_fetch_response_cb;   /* __glyphis_onFetchResponse */
 extern JSValueRef g_fetch_error_cb;      /* __glyphis_onFetchError    */
+extern JSValueRef g_ws_open_cb;          /* __glyphis_onWsOpen        */
+extern JSValueRef g_ws_message_cb;       /* __glyphis_onWsMessage     */
+extern JSValueRef g_ws_close_cb;         /* __glyphis_onWsClose       */
+extern JSValueRef g_ws_error_cb;         /* __glyphis_onWsError       */
 
 /**
  * Look up and cache all __glyphis_* global callback functions.

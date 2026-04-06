@@ -93,7 +93,14 @@ class GlyphisRuntime(
         nativeFireViewportUpdate(width.toDouble(), height.toDouble())
     }
 
+    private val webSockets = mutableMapOf<Int, SimpleWebSocket>()
+
     fun destroy() {
+        // Close all WebSocket connections
+        for ((_, ws) in webSockets) {
+            ws.close(1001, "Runtime destroyed")
+        }
+        webSockets.clear()
         textInputManager.destroy()
         imageLoader.destroy()
         httpExecutor.shutdownNow()
@@ -278,6 +285,41 @@ class GlyphisRuntime(
         return json.toString()
     }
 
+    // -- WebSocket bridge --
+
+    /** Called from JNI when JS invokes `__glyphis_native.wsConnect(wsId, url, protocols)`. */
+    @Suppress("unused")
+    fun onWsConnect(wsId: Int, url: String, protocols: String) {
+        val ws = SimpleWebSocket(
+            url = url,
+            handler = handler,
+            onOpen = { handler.post { nativeFireWsOpen(wsId) } },
+            onMessage = { data -> handler.post { nativeFireWsMessage(wsId, data) } },
+            onClose = { code, reason ->
+                handler.post {
+                    nativeFireWsClose(wsId, code, reason)
+                    webSockets.remove(wsId)
+                }
+            },
+            onError = { msg -> handler.post { nativeFireWsError(wsId, msg) } },
+        )
+        webSockets[wsId] = ws
+        ws.connect()
+    }
+
+    /** Called from JNI when JS invokes `__glyphis_native.wsSend(wsId, data)`. */
+    @Suppress("unused")
+    fun onWsSend(wsId: Int, data: String) {
+        webSockets[wsId]?.send(data)
+    }
+
+    /** Called from JNI when JS invokes `__glyphis_native.wsClose(wsId, code, reason)`. */
+    @Suppress("unused")
+    fun onWsClose(wsId: Int, code: Int, reason: String) {
+        webSockets[wsId]?.close(code, reason)
+        webSockets.remove(wsId)
+    }
+
     /** Called from JNI when JS invokes `__glyphis_native.fetch(reqId, url, method, headersJson, body)`. */
     @Suppress("unused")
     fun onFetch(reqId: Int, url: String, method: String, headersJson: String, body: String) {
@@ -351,4 +393,8 @@ class GlyphisRuntime(
     private external fun nativeFireViewportUpdate(width: Double, height: Double)
     private external fun nativeFireFetchResponse(reqId: Int, status: Int, headersJson: String, body: String)
     private external fun nativeFireFetchError(reqId: Int, message: String)
+    private external fun nativeFireWsOpen(wsId: Int)
+    private external fun nativeFireWsMessage(wsId: Int, data: String)
+    private external fun nativeFireWsClose(wsId: Int, code: Int, reason: String)
+    private external fun nativeFireWsError(wsId: Int, message: String)
 }

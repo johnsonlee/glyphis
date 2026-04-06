@@ -776,6 +776,106 @@ static JSValueRef js_storageGetAll(
 }
 
 /* ------------------------------------------------------------------ */
+/*  JS callback: __glyphis_native.wsConnect(wsId, url, protocols)     */
+/* ------------------------------------------------------------------ */
+
+static JSValueRef js_wsConnect(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 3) return JSValueMakeUndefined(ctx);
+
+    int wsId = (int)JSValueToNumber(ctx, argv[0], NULL);
+
+    JSStringRef urlStr       = JSValueToStringCopy(ctx, argv[1], NULL);
+    JSStringRef protocolsStr = JSValueToStringCopy(ctx, argv[2], NULL);
+    char* url       = JSStringToCString(urlStr);
+    char* protocols = JSStringToCString(protocolsStr);
+
+    JNIEnv* env = getJNIEnv();
+    if (env && g_runtime) {
+        jclass    cls = env->GetObjectClass(g_runtime);
+        jmethodID mid = env->GetMethodID(cls, "onWsConnect",
+            "(ILjava/lang/String;Ljava/lang/String;)V");
+        jstring jUrl       = env->NewStringUTF(url);
+        jstring jProtocols = env->NewStringUTF(protocols);
+        env->CallVoidMethod(g_runtime, mid, wsId, jUrl, jProtocols);
+        env->DeleteLocalRef(jUrl);
+        env->DeleteLocalRef(jProtocols);
+        env->DeleteLocalRef(cls);
+    }
+
+    free(url);
+    free(protocols);
+    JSStringRelease(urlStr);
+    JSStringRelease(protocolsStr);
+    return JSValueMakeUndefined(ctx);
+}
+
+/* ------------------------------------------------------------------ */
+/*  JS callback: __glyphis_native.wsSend(wsId, data)                  */
+/* ------------------------------------------------------------------ */
+
+static JSValueRef js_wsSend(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 2) return JSValueMakeUndefined(ctx);
+
+    int wsId = (int)JSValueToNumber(ctx, argv[0], NULL);
+
+    JSStringRef dataStr = JSValueToStringCopy(ctx, argv[1], NULL);
+    char* data = JSStringToCString(dataStr);
+
+    JNIEnv* env = getJNIEnv();
+    if (env && g_runtime) {
+        jclass    cls = env->GetObjectClass(g_runtime);
+        jmethodID mid = env->GetMethodID(cls, "onWsSend",
+            "(ILjava/lang/String;)V");
+        jstring jData = env->NewStringUTF(data);
+        env->CallVoidMethod(g_runtime, mid, wsId, jData);
+        env->DeleteLocalRef(jData);
+        env->DeleteLocalRef(cls);
+    }
+
+    free(data);
+    JSStringRelease(dataStr);
+    return JSValueMakeUndefined(ctx);
+}
+
+/* ------------------------------------------------------------------ */
+/*  JS callback: __glyphis_native.wsClose(wsId, code, reason)         */
+/* ------------------------------------------------------------------ */
+
+static JSValueRef js_wsClose(
+    JSContextRef ctx, JSObjectRef function, JSObjectRef thisObj,
+    size_t argc, const JSValueRef argv[], JSValueRef* exc)
+{
+    if (argc < 3) return JSValueMakeUndefined(ctx);
+
+    int wsId   = (int)JSValueToNumber(ctx, argv[0], NULL);
+    int code   = (int)JSValueToNumber(ctx, argv[1], NULL);
+
+    JSStringRef reasonStr = JSValueToStringCopy(ctx, argv[2], NULL);
+    char* reason = JSStringToCString(reasonStr);
+
+    JNIEnv* env = getJNIEnv();
+    if (env && g_runtime) {
+        jclass    cls = env->GetObjectClass(g_runtime);
+        jmethodID mid = env->GetMethodID(cls, "onWsClose",
+            "(IILjava/lang/String;)V");
+        jstring jReason = env->NewStringUTF(reason);
+        env->CallVoidMethod(g_runtime, mid, wsId, code, jReason);
+        env->DeleteLocalRef(jReason);
+        env->DeleteLocalRef(cls);
+    }
+
+    free(reason);
+    JSStringRelease(reasonStr);
+    return JSValueMakeUndefined(ctx);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Register __glyphis_native + console on global context             */
 /* ------------------------------------------------------------------ */
 
@@ -820,5 +920,8 @@ void register_platform_bridge(JSContextRef ctx, JSObjectRef global) {
     setFunctionProperty(ctx, bridge, "storageRemove",        js_storageRemove);
     setFunctionProperty(ctx, bridge, "storageClear",         js_storageClear);
     setFunctionProperty(ctx, bridge, "storageGetAll",        js_storageGetAll);
+    setFunctionProperty(ctx, bridge, "wsConnect",            js_wsConnect);
+    setFunctionProperty(ctx, bridge, "wsSend",               js_wsSend);
+    setFunctionProperty(ctx, bridge, "wsClose",              js_wsClose);
     setStringProperty(ctx,   bridge, "platform",             "android");
 }

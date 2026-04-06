@@ -156,13 +156,12 @@ examples/
 
 Polyfilled on native (JSC) so npm packages work without modification:
 
-`fetch`, `localStorage`, `setTimeout`/`setInterval`, `queueMicrotask`, `Promise`, `MessageChannel`, `performance.now`, `URL`/`URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `crypto.getRandomValues`, `AbortController`, `console`, `requestAnimationFrame`
+`fetch`, `WebSocket`, `localStorage`, `setTimeout`/`setInterval`, `queueMicrotask`, `Promise`, `MessageChannel`, `performance.now`, `URL`/`URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `crypto.getRandomValues`, `AbortController`, `console`, `requestAnimationFrame`
 
 ## Not implemented yet
 
 - Accessibility (single-surface rendering bypasses platform accessibility trees)
 - GPU rendering (currently CPU 2D only)
-- WebSocket
 
 ## Development
 

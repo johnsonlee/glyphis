@@ -29,6 +29,13 @@ class GlyphisRuntime {
     private var viewportUpdateCallback: JSValue?
     private var fetchResponseCallback: JSValue?
     private var fetchErrorCallback: JSValue?
+    private var wsOpenCallback: JSValue?
+    private var wsMessageCallback: JSValue?
+    private var wsCloseCallback: JSValue?
+    private var wsErrorCallback: JSValue?
+
+    // WebSocket state
+    private var webSocketTasks: [Int: URLSessionWebSocketTask] = [:]
 
     init(renderView: GlyphisRenderView) {
         self.renderView = renderView
@@ -54,6 +61,10 @@ class GlyphisRuntime {
         viewportUpdateCallback = context.objectForKeyedSubscript("__glyphis_updateViewport")
         fetchResponseCallback = context.objectForKeyedSubscript("__glyphis_onFetchResponse")
         fetchErrorCallback = context.objectForKeyedSubscript("__glyphis_onFetchError")
+        wsOpenCallback = context.objectForKeyedSubscript("__glyphis_onWsOpen")
+        wsMessageCallback = context.objectForKeyedSubscript("__glyphis_onWsMessage")
+        wsCloseCallback = context.objectForKeyedSubscript("__glyphis_onWsClose")
+        wsErrorCallback = context.objectForKeyedSubscript("__glyphis_onWsError")
 
         // Wire up RenderView text callbacks to use cached JSValues
         renderView?.onTextChange = { [weak self] inputId, text in
@@ -247,6 +258,25 @@ class GlyphisRuntime {
                                headersJson: headersJson, body: body)
         }
         bridge.setObject(fetchBridge, forKeyedSubscript: "fetch" as NSString)
+
+        // WebSocket bridge
+        let wsConnect: @convention(block) (Int, String, String) -> Void = {
+            [weak self] wsId, url, protocols in
+            self?.connectWebSocket(wsId: wsId, url: url, protocols: protocols)
+        }
+        bridge.setObject(wsConnect, forKeyedSubscript: "wsConnect" as NSString)
+
+        let wsSend: @convention(block) (Int, String) -> Void = {
+            [weak self] wsId, data in
+            self?.sendWebSocket(wsId: wsId, data: data)
+        }
+        bridge.setObject(wsSend, forKeyedSubscript: "wsSend" as NSString)
+
+        let wsCloseBridge: @convention(block) (Int, Int, String) -> Void = {
+            [weak self] wsId, code, reason in
+            self?.closeWebSocket(wsId: wsId, code: code, reason: reason)
+        }
+        bridge.setObject(wsCloseBridge, forKeyedSubscript: "wsClose" as NSString)
 
         // platform identifier
         bridge.setObject("macos", forKeyedSubscript: "platform" as NSString)
@@ -518,6 +548,68 @@ class GlyphisRuntime {
             };
         """)
 
+        // WebSocket polyfill
+        context.evaluateScript("""
+            var __glyphis_nextWsId = 1;
+            var __glyphis_wsInstances = {};
+
+            globalThis.WebSocket = function(url, protocols) {
+                var wsId = __glyphis_nextWsId++;
+                this._wsId = wsId;
+                this.url = url;
+                this.readyState = 0;
+                this.onopen = null;
+                this.onmessage = null;
+                this.onclose = null;
+                this.onerror = null;
+                __glyphis_wsInstances[wsId] = this;
+                __glyphis_native.wsConnect(wsId, url, protocols || '');
+            };
+
+            WebSocket.CONNECTING = 0;
+            WebSocket.OPEN = 1;
+            WebSocket.CLOSING = 2;
+            WebSocket.CLOSED = 3;
+
+            WebSocket.prototype.send = function(data) {
+                if (this.readyState !== 1) throw new Error('WebSocket is not open');
+                __glyphis_native.wsSend(this._wsId, String(data));
+            };
+
+            WebSocket.prototype.close = function(code, reason) {
+                if (this.readyState >= 2) return;
+                this.readyState = 2;
+                __glyphis_native.wsClose(this._wsId, code || 1000, reason || '');
+            };
+
+            globalThis.__glyphis_onWsOpen = function(wsId) {
+                var ws = __glyphis_wsInstances[wsId];
+                if (!ws) return;
+                ws.readyState = 1;
+                if (ws.onopen) ws.onopen({ type: 'open' });
+            };
+
+            globalThis.__glyphis_onWsMessage = function(wsId, data) {
+                var ws = __glyphis_wsInstances[wsId];
+                if (!ws) return;
+                if (ws.onmessage) ws.onmessage({ type: 'message', data: data });
+            };
+
+            globalThis.__glyphis_onWsClose = function(wsId, code, reason) {
+                var ws = __glyphis_wsInstances[wsId];
+                if (!ws) return;
+                ws.readyState = 3;
+                if (ws.onclose) ws.onclose({ type: 'close', code: code, reason: reason, wasClean: code === 1000 });
+                delete __glyphis_wsInstances[wsId];
+            };
+
+            globalThis.__glyphis_onWsError = function(wsId, message) {
+                var ws = __glyphis_wsInstances[wsId];
+                if (!ws) return;
+                if (ws.onerror) ws.onerror({ type: 'error', message: message });
+            };
+        """)
+
         // Error handling
         context.exceptionHandler = { _, exception in
             NSLog("[JS Error] %@", exception?.toString() ?? "unknown error")
@@ -676,6 +768,78 @@ class GlyphisRuntime {
                 self?.fetchResponseCallback?.call(withArguments: [reqId, status, headersJson, bodyStr])
             }
         }.resume()
+    }
+
+    // MARK: - WebSocket
+
+    private func connectWebSocket(wsId: Int, url: String, protocols: String) {
+        guard let wsUrl = Foundation.URL(string: url) else {
+            wsErrorCallback?.call(withArguments: [wsId, "Invalid WebSocket URL"])
+            wsCloseCallback?.call(withArguments: [wsId, 1006, "Invalid URL"])
+            return
+        }
+        var request = URLRequest(url: wsUrl)
+        if !protocols.isEmpty {
+            request.setValue(protocols, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        }
+        let task = URLSession.shared.webSocketTask(with: request)
+        webSocketTasks[wsId] = task
+        task.resume()
+
+        // URLSessionWebSocketTask does not have an explicit "onOpen" delegate callback
+        // when used without a delegate. We fire open after resume and start receiving.
+        DispatchQueue.main.async { [weak self] in
+            self?.wsOpenCallback?.call(withArguments: [wsId])
+        }
+
+        receiveWebSocketMessage(wsId: wsId, task: task)
+    }
+
+    private func receiveWebSocketMessage(wsId: Int, task: URLSessionWebSocketTask) {
+        task.receive { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let message):
+                var data = ""
+                switch message {
+                case .string(let text):
+                    data = text
+                case .data(let bytes):
+                    data = String(data: bytes, encoding: .utf8) ?? ""
+                @unknown default:
+                    break
+                }
+                DispatchQueue.main.async {
+                    self.wsMessageCallback?.call(withArguments: [wsId, data])
+                }
+                // Continue receiving
+                self.receiveWebSocketMessage(wsId: wsId, task: task)
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self.wsErrorCallback?.call(withArguments: [wsId, error.localizedDescription])
+                    self.wsCloseCallback?.call(withArguments: [wsId, 1006, "Connection lost"])
+                    self.webSocketTasks.removeValue(forKey: wsId)
+                }
+            }
+        }
+    }
+
+    private func sendWebSocket(wsId: Int, data: String) {
+        guard let task = webSocketTasks[wsId] else { return }
+        task.send(.string(data)) { [weak self] error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    self?.wsErrorCallback?.call(withArguments: [wsId, error.localizedDescription])
+                }
+            }
+        }
+    }
+
+    private func closeWebSocket(wsId: Int, code: Int, reason: String) {
+        guard let task = webSocketTasks[wsId] else { return }
+        let closeCode = URLSessionWebSocketTask.CloseCode(rawValue: code) ?? .normalClosure
+        task.cancel(with: closeCode, reason: reason.data(using: .utf8))
+        webSocketTasks.removeValue(forKey: wsId)
     }
 
     private func setupTouchBridge() {

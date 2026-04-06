@@ -65,6 +65,10 @@ JSValueRef g_image_loaded_cb    = NULL;
 JSValueRef g_viewport_update_cb = NULL;
 JSValueRef g_fetch_response_cb  = NULL;
 JSValueRef g_fetch_error_cb     = NULL;
+JSValueRef g_ws_open_cb         = NULL;
+JSValueRef g_ws_message_cb      = NULL;
+JSValueRef g_ws_close_cb        = NULL;
+JSValueRef g_ws_error_cb        = NULL;
 
 static void cache_one_callback(JSContextRef ctx, JSObjectRef global,
                                 const char* name, JSValueRef* slot)
@@ -90,6 +94,10 @@ void cache_js_callbacks(JSContextRef ctx) {
     cache_one_callback(ctx, global, "__glyphis_updateViewport", &g_viewport_update_cb);
     cache_one_callback(ctx, global, "__glyphis_onFetchResponse",&g_fetch_response_cb);
     cache_one_callback(ctx, global, "__glyphis_onFetchError",   &g_fetch_error_cb);
+    cache_one_callback(ctx, global, "__glyphis_onWsOpen",       &g_ws_open_cb);
+    cache_one_callback(ctx, global, "__glyphis_onWsMessage",    &g_ws_message_cb);
+    cache_one_callback(ctx, global, "__glyphis_onWsClose",      &g_ws_close_cb);
+    cache_one_callback(ctx, global, "__glyphis_onWsError",      &g_ws_error_cb);
 }
 
 void call_js_callback(JSContextRef ctx, JSValueRef callback, size_t argc, JSValueRef argv[]) {
@@ -109,9 +117,10 @@ static void unprotect_cached_callbacks(JSContextRef ctx) {
     JSValueRef* slots[] = {
         &g_touch_callback, &g_text_change_cb, &g_text_submit_cb,
         &g_text_focus_cb, &g_text_blur_cb, &g_image_loaded_cb,
-        &g_viewport_update_cb, &g_fetch_response_cb, &g_fetch_error_cb
+        &g_viewport_update_cb, &g_fetch_response_cb, &g_fetch_error_cb,
+        &g_ws_open_cb, &g_ws_message_cb, &g_ws_close_cb, &g_ws_error_cb
     };
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 13; i++) {
         if (*slots[i]) {
             JSValueUnprotect(ctx, *slots[i]);
             *slots[i] = NULL;
@@ -359,6 +368,62 @@ Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireFetchError(
     args[0] = JSValueMakeNumber(g_context, reqId);
     args[1] = JSValueMakeString(g_context, jsMsg);
     call_js_callback(g_context, g_fetch_error_cb, 2, args);
+    JSStringRelease(jsMsg);
+    env->ReleaseStringUTFChars(message, cMsg);
+}
+
+JNIEXPORT void JNICALL
+Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireWsOpen(
+    JNIEnv* env, jobject thiz, jint wsId)
+{
+    if (!g_context || !g_ws_open_cb) return;
+    JSValueRef args[1];
+    args[0] = JSValueMakeNumber(g_context, wsId);
+    call_js_callback(g_context, g_ws_open_cb, 1, args);
+}
+
+JNIEXPORT void JNICALL
+Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireWsMessage(
+    JNIEnv* env, jobject thiz, jint wsId, jstring data)
+{
+    if (!g_context || !g_ws_message_cb) return;
+    const char* cData = env->GetStringUTFChars(data, NULL);
+    JSStringRef jsData = JSStringCreateWithUTF8CString(cData);
+    JSValueRef args[2];
+    args[0] = JSValueMakeNumber(g_context, wsId);
+    args[1] = JSValueMakeString(g_context, jsData);
+    call_js_callback(g_context, g_ws_message_cb, 2, args);
+    JSStringRelease(jsData);
+    env->ReleaseStringUTFChars(data, cData);
+}
+
+JNIEXPORT void JNICALL
+Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireWsClose(
+    JNIEnv* env, jobject thiz, jint wsId, jint code, jstring reason)
+{
+    if (!g_context || !g_ws_close_cb) return;
+    const char* cReason = env->GetStringUTFChars(reason, NULL);
+    JSStringRef jsReason = JSStringCreateWithUTF8CString(cReason);
+    JSValueRef args[3];
+    args[0] = JSValueMakeNumber(g_context, wsId);
+    args[1] = JSValueMakeNumber(g_context, code);
+    args[2] = JSValueMakeString(g_context, jsReason);
+    call_js_callback(g_context, g_ws_close_cb, 3, args);
+    JSStringRelease(jsReason);
+    env->ReleaseStringUTFChars(reason, cReason);
+}
+
+JNIEXPORT void JNICALL
+Java_io_johnsonlee_glyphis_shell_GlyphisRuntime_nativeFireWsError(
+    JNIEnv* env, jobject thiz, jint wsId, jstring message)
+{
+    if (!g_context || !g_ws_error_cb) return;
+    const char* cMsg = env->GetStringUTFChars(message, NULL);
+    JSStringRef jsMsg = JSStringCreateWithUTF8CString(cMsg);
+    JSValueRef args[2];
+    args[0] = JSValueMakeNumber(g_context, wsId);
+    args[1] = JSValueMakeString(g_context, jsMsg);
+    call_js_callback(g_context, g_ws_error_cb, 2, args);
     JSStringRelease(jsMsg);
     env->ReleaseStringUTFChars(message, cMsg);
 }

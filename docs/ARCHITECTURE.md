@@ -144,6 +144,7 @@ No JSON serialization on any hot path:
 
 Polyfilled on native JSC so npm packages work without modification:
 - `fetch` (URLSession / HttpURLConnection backed)
+- `WebSocket` (URLSessionWebSocketTask on Apple, raw Socket on Android)
 - `localStorage` (UserDefaults / SharedPreferences backed)
 - `URL` / `URLSearchParams`, `TextEncoder` / `TextDecoder`, `atob` / `btoa`
 - `crypto.getRandomValues`, `AbortController`
