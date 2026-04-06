@@ -36,6 +36,23 @@ jobs:
           echo "Functions: ${FUNCS}%  Lines: ${LINES}%"
           awk "BEGIN { if ($FUNCS < 95 || $LINES < 95) { print \"FAIL: coverage below 95%\"; exit 1 } }"
 
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Benchmark
+        run: bun test ./tests/benchmark.test.ts --conditions browser
+
   build-macos:
     runs-on: macos-latest
     steps:
