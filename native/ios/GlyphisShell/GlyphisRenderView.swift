@@ -8,12 +8,20 @@ class GlyphisRenderView: UIView {
     private var displayLink: CADisplayLink?
     private var needsRender = false
 
-    /// Cache of loaded images keyed by imageId (typically the URL).
-    var imageCache: [String: CGImage] = [:]
+    /// Lookup function for decoded images by imageId. Set by GlyphisRuntime.
+    var imageLookup: ((String) -> CGImage?)? = nil
 
     /// Called by GlyphisRuntime when a touch event occurs.
     /// Parameters: (eventType, x, y)
     var onTouch: ((String, CGFloat, CGFloat) -> Void)?
+
+    /// Active native text input overlays keyed by inputId.
+    private var textInputFields: [String: UITextField] = [:]
+
+    /// Callback closures for text input events, set by GlyphisRuntime.
+    var onTextChange: ((String, String) -> Void)?
+    var onTextSubmit: ((String) -> Void)?
+    var onTextFocus: ((String) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -233,7 +241,7 @@ class GlyphisRenderView: UIView {
         guard let imageId = cmd["imageId"] as? String,
               let x = cgFloat(cmd, "x"), let y = cgFloat(cmd, "y"),
               let w = cgFloat(cmd, "width"), let h = cgFloat(cmd, "height"),
-              let cgImage = imageCache[imageId] else { return }
+              let cgImage = imageLookup?(imageId) else { return }
 
         let resizeMode = (cmd["resizeMode"] as? String) ?? "cover"
         let hasOpacity = cmd["opacity"] != nil
@@ -365,6 +373,93 @@ class GlyphisRenderView: UIView {
         }
     }
 
+    // MARK: - TextInput Overlay
+
+    func showTextInput(
+        inputId: String, x: Double, y: Double, width: Double, height: Double,
+        value: String, placeholder: String, fontSize: Double,
+        color: String, placeholderColor: String,
+        keyboardType: String, returnKeyType: String,
+        secureTextEntry: Bool, multiline: Bool, maxLength: Int
+    ) {
+        // Remove existing if present
+        hideTextInput(inputId: inputId)
+
+        let textField = UITextField(frame: CGRect(x: x, y: y, width: width, height: height))
+        textField.text = value
+        textField.placeholder = placeholder
+        textField.font = UIFont.systemFont(ofSize: CGFloat(fontSize))
+        textField.textColor = UIColor(cgColor: parseColor(color))
+        textField.isSecureTextEntry = secureTextEntry
+        textField.borderStyle = .none
+        textField.backgroundColor = .clear
+        textField.delegate = self
+
+        // Placeholder color
+        if !placeholderColor.isEmpty {
+            let phColor = UIColor(cgColor: parseColor(placeholderColor))
+            textField.attributedPlaceholder = NSAttributedString(
+                string: placeholder,
+                attributes: [
+                    .foregroundColor: phColor,
+                    .font: textField.font!,
+                ]
+            )
+        }
+
+        // Keyboard type mapping
+        switch keyboardType {
+        case "number-pad": textField.keyboardType = .numberPad
+        case "decimal-pad": textField.keyboardType = .decimalPad
+        case "email-address": textField.keyboardType = .emailAddress
+        case "phone-pad": textField.keyboardType = .phonePad
+        case "url": textField.keyboardType = .URL
+        default: textField.keyboardType = .default
+        }
+
+        // Return key type mapping
+        switch returnKeyType {
+        case "done": textField.returnKeyType = .done
+        case "go": textField.returnKeyType = .go
+        case "next": textField.returnKeyType = .next
+        case "search": textField.returnKeyType = .search
+        case "send": textField.returnKeyType = .send
+        default: textField.returnKeyType = .default
+        }
+
+        // Text change listener via target-action
+        textField.addTarget(self, action: #selector(textFieldDidChangeValue(_:)), for: .editingChanged)
+
+        addSubview(textField)
+        textInputFields[inputId] = textField
+
+        textField.becomeFirstResponder()
+
+        // Fire focus callback
+        onTextFocus?(inputId)
+    }
+
+    func updateTextInput(inputId: String, x: Double, y: Double, width: Double, height: Double) {
+        guard let field = textInputFields[inputId] else { return }
+        if x >= 0 && y >= 0 && width >= 0 && height >= 0 {
+            field.frame = CGRect(x: x, y: y, width: width, height: height)
+        }
+    }
+
+    func hideTextInput(inputId: String) {
+        if let field = textInputFields[inputId] {
+            field.resignFirstResponder()
+            field.removeFromSuperview()
+            textInputFields.removeValue(forKey: inputId)
+        }
+    }
+
+    @objc private func textFieldDidChangeValue(_ textField: UITextField) {
+        let inputId = textInputFields.first(where: { $0.value === textField })?.key ?? ""
+        let text = textField.text ?? ""
+        onTextChange?(inputId, text)
+    }
+
     // MARK: - Touch Handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -389,5 +484,23 @@ class GlyphisRenderView: UIView {
         guard let touch = touches.first else { return }
         let p = touch.location(in: self)
         onTouch?("pointerup", p.x, p.y)
+    }
+}
+
+// MARK: - UITextFieldDelegate
+
+extension GlyphisRenderView: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        let inputId = textInputFields.first(where: { $0.value === textField })?.key ?? ""
+        onTextSubmit?(inputId)
+        return true
+    }
+
+    func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+        // Enforce maxLength if configured
+        let inputId = textInputFields.first(where: { $0.value === textField })?.key ?? ""
+        // maxLength enforcement would require storing config per input;
+        // for now, allow all changes and let JS handle maxLength validation
+        return true
     }
 }

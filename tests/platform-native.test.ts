@@ -4,32 +4,51 @@ import { describe, test, expect, beforeEach, mock } from 'bun:test';
 // Mock the __glyphis_native bridge before importing the module under test
 // ---------------------------------------------------------------------------
 
-const mockSubmitRenderCommands = mock(() => {});
-const mockMeasureText = mock(() => ({ width: 50, height: 20 }));
-const mockGetViewportSize = mock(() => ({ width: 390, height: 844 }));
-const mockLoadImage = mock((_id: string, _url: string) => {});
+const mockSubmitRenderCommands = mock(function () {});
+const mockMeasureText = mock(function () { return { width: 50, height: 20 }; });
+const mockGetViewportSize = mock(function () { return { width: 390, height: 844 }; });
+const mockLoadImage = mock(function (_id: string, _url: string) {});
+const mockShowTextInput = mock(function (
+  _inputId: string, _x: number, _y: number, _w: number, _h: number,
+  _value: string, _placeholder: string, _fontSize: number,
+  _color: string, _phColor: string,
+  _kbType: string, _retKey: string,
+  _secure: boolean, _multiline: boolean, _maxLen: number
+) {});
+const mockUpdateTextInput = mock(function (_inputId: string, _x: number, _y: number, _w: number, _h: number) {});
+const mockHideTextInput = mock(function (_inputId: string) {});
 
 (globalThis as any).__glyphis_native = {
   submitRenderCommands: mockSubmitRenderCommands,
   measureText: mockMeasureText,
   getViewportSize: mockGetViewportSize,
   loadImage: mockLoadImage,
+  showTextInput: mockShowTextInput,
+  updateTextInput: mockUpdateTextInput,
+  hideTextInput: mockHideTextInput,
   platform: 'ios' as const,
 };
 
 import { createNativePlatform } from '../src/platform/native';
 
-beforeEach(() => {
+beforeEach(function () {
   mockSubmitRenderCommands.mockReset();
   mockMeasureText.mockReset();
   mockMeasureText.mockReturnValue({ width: 50, height: 20 });
   mockGetViewportSize.mockReset();
   mockGetViewportSize.mockReturnValue({ width: 390, height: 844 });
   mockLoadImage.mockReset();
+  mockShowTextInput.mockReset();
+  mockUpdateTextInput.mockReset();
+  mockHideTextInput.mockReset();
   // Clean up globals
   delete (globalThis as any).__glyphis_handleTouch;
   delete (globalThis as any).__glyphis_updateViewport;
   delete (globalThis as any).__glyphis_onImageLoaded;
+  delete (globalThis as any).__glyphis_onTextChange;
+  delete (globalThis as any).__glyphis_onTextSubmit;
+  delete (globalThis as any).__glyphis_onTextFocus;
+  delete (globalThis as any).__glyphis_onTextBlur;
 });
 
 // ---------------------------------------------------------------------------
@@ -77,7 +96,7 @@ describe('measureText', () => {
 // ---------------------------------------------------------------------------
 
 describe('render', () => {
-  test('serializes commands to JSON and calls submitRenderCommands', () => {
+  test('passes commands array to submitRenderCommands', () => {
     const platform = createNativePlatform();
     const commands = [
       { type: 'rect' as const, x: 0, y: 0, width: 100, height: 50, color: '#ff0000' },
@@ -86,14 +105,14 @@ describe('render', () => {
     platform.render(commands);
 
     expect(mockSubmitRenderCommands).toHaveBeenCalledTimes(1);
-    const jsonArg = mockSubmitRenderCommands.mock.calls[0][0];
-    expect(JSON.parse(jsonArg)).toEqual(commands);
+    const arg = mockSubmitRenderCommands.mock.calls[0][0];
+    expect(arg).toEqual(commands);
   });
 
   test('empty commands array', () => {
     const platform = createNativePlatform();
     platform.render([]);
-    expect(mockSubmitRenderCommands).toHaveBeenCalledWith('[]');
+    expect(mockSubmitRenderCommands).toHaveBeenCalledWith([]);
   });
 });
 
@@ -243,5 +262,132 @@ describe('onImageLoaded', () => {
     expect(results.length).toBe(2);
     expect(results[0]).toEqual({ id: 'img-a', w: 100, h: 50 });
     expect(results[1]).toEqual({ id: 'img-b', w: 200, h: 150 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// showTextInput
+// ---------------------------------------------------------------------------
+
+describe('showTextInput', function () {
+  test('calls __glyphis_native.showTextInput with individual args', function () {
+    var platform = createNativePlatform();
+    var config = {
+      inputId: 'native-ti-1',
+      x: 10, y: 20, width: 200, height: 40,
+      value: 'hello',
+      placeholder: 'Type',
+      fontSize: 16,
+      color: '#000000',
+      placeholderColor: '#999999',
+      keyboardType: 'default',
+      returnKeyType: 'done',
+      secureTextEntry: false,
+      multiline: false,
+      maxLength: 0,
+    };
+    platform.showTextInput(config);
+
+    expect(mockShowTextInput).toHaveBeenCalledTimes(1);
+    expect(mockShowTextInput).toHaveBeenCalledWith(
+      'native-ti-1', 10, 20, 200, 40,
+      'hello', 'Type', 16,
+      '#000000', '#999999',
+      'default', 'done',
+      false, false, 0
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateTextInput
+// ---------------------------------------------------------------------------
+
+describe('updateTextInput', function () {
+  test('calls __glyphis_native.updateTextInput with individual args', function () {
+    var platform = createNativePlatform();
+    platform.updateTextInput('native-ti-1', { x: 50, y: 60, width: 200, height: 40 });
+
+    expect(mockUpdateTextInput).toHaveBeenCalledTimes(1);
+    expect(mockUpdateTextInput).toHaveBeenCalledWith('native-ti-1', 50, 60, 200, 40);
+  });
+
+  test('passes -1 for omitted position fields', function () {
+    var platform = createNativePlatform();
+    platform.updateTextInput('native-ti-1', { value: 'updated' });
+
+    expect(mockUpdateTextInput).toHaveBeenCalledTimes(1);
+    expect(mockUpdateTextInput).toHaveBeenCalledWith('native-ti-1', -1, -1, -1, -1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hideTextInput
+// ---------------------------------------------------------------------------
+
+describe('hideTextInput', function () {
+  test('calls __glyphis_native.hideTextInput', function () {
+    var platform = createNativePlatform();
+    platform.hideTextInput('native-ti-1');
+    expect(mockHideTextInput).toHaveBeenCalledWith('native-ti-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Text input event callbacks
+// ---------------------------------------------------------------------------
+
+describe('text input events via onInput', function () {
+  test('__glyphis_onTextChange dispatches textchange event', function () {
+    var platform = createNativePlatform();
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    expect(typeof (globalThis as any).__glyphis_onTextChange).toBe('function');
+    (globalThis as any).__glyphis_onTextChange('input-abc', 'new text');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textchange');
+    expect(receivedEvent.inputId).toBe('input-abc');
+    expect(receivedEvent.text).toBe('new text');
+  });
+
+  test('__glyphis_onTextSubmit dispatches textsubmit event', function () {
+    var platform = createNativePlatform();
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    expect(typeof (globalThis as any).__glyphis_onTextSubmit).toBe('function');
+    (globalThis as any).__glyphis_onTextSubmit('input-abc');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textsubmit');
+    expect(receivedEvent.inputId).toBe('input-abc');
+  });
+
+  test('__glyphis_onTextFocus dispatches textfocus event', function () {
+    var platform = createNativePlatform();
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    expect(typeof (globalThis as any).__glyphis_onTextFocus).toBe('function');
+    (globalThis as any).__glyphis_onTextFocus('input-abc');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textfocus');
+    expect(receivedEvent.inputId).toBe('input-abc');
+  });
+
+  test('__glyphis_onTextBlur dispatches textblur event', function () {
+    var platform = createNativePlatform();
+    var receivedEvent: any = null;
+    platform.onInput(function (event: any) { receivedEvent = event; });
+
+    expect(typeof (globalThis as any).__glyphis_onTextBlur).toBe('function');
+    (globalThis as any).__glyphis_onTextBlur('input-abc');
+
+    expect(receivedEvent).not.toBeNull();
+    expect(receivedEvent.type).toBe('textblur');
+    expect(receivedEvent.inputId).toBe('input-abc');
   });
 });

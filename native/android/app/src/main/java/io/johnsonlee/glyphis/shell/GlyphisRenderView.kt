@@ -11,25 +11,24 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
-import org.json.JSONObject
 
 /**
  * Custom View that renders Glyphis framework render commands using Android Canvas.
- * Receives a list of JSON render command objects from the JS runtime and
- * draws them in [onDraw] using the Canvas 2D API.
+ * Receives typed [RenderCmd] objects from the JS runtime (via C/JNI, no JSON)
+ * and draws them in [onDraw] using the Canvas 2D API.
  */
 class GlyphisRenderView(context: Context) : View(context) {
 
     private val density: Float = context.resources.displayMetrics.density
-    private var renderCommands: List<JSONObject> = emptyList()
+    private var renderCommands: List<RenderCmd> = emptyList()
 
-    /** Cache of loaded images keyed by imageId (typically the URL). */
-    val imageCache = mutableMapOf<String, Bitmap>()
+    /** Lookup function for decoded bitmaps by imageId. Set by [GlyphisRuntime]. */
+    var imageLookup: ((String) -> Bitmap?)? = null
 
     /** Called by [GlyphisRuntime] when a touch event occurs. Parameters: (eventType, x, y) */
     var onTouch: ((type: String, x: Float, y: Float) -> Unit)? = null
 
-    fun setRenderCommands(commands: List<JSONObject>) {
+    fun setRenderCommands(commands: List<RenderCmd>) {
         this.renderCommands = commands
         postInvalidate()
     }
@@ -43,28 +42,26 @@ class GlyphisRenderView(context: Context) : View(context) {
         canvas.scale(density, density)
 
         for (cmd in renderCommands) {
-            when (cmd.optString("type")) {
-                "rect" -> drawRect(canvas, cmd)
-                "text" -> drawText(canvas, cmd)
-                "image" -> drawImage(canvas, cmd)
-                "border" -> drawBorder(canvas, cmd)
-                "clip-start" -> {
+            when (cmd) {
+                is RenderCmd.Rect -> drawRect(canvas, cmd)
+                is RenderCmd.Text -> drawText(canvas, cmd)
+                is RenderCmd.Image -> drawImage(canvas, cmd)
+                is RenderCmd.Border -> drawBorder(canvas, cmd)
+                is RenderCmd.ClipStart -> {
                     canvas.save()
-                    val x = cmd.optDouble("x").toFloat()
-                    val y = cmd.optDouble("y").toFloat()
-                    val w = cmd.optDouble("width").toFloat()
-                    val h = cmd.optDouble("height").toFloat()
-                    val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
-                    if (borderRadius > 0) {
+                    if (cmd.borderRadius > 0) {
                         val path = Path().apply {
-                            addRoundRect(RectF(x, y, x + w, y + h), borderRadius, borderRadius, Path.Direction.CW)
+                            addRoundRect(
+                                RectF(cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h),
+                                cmd.borderRadius, cmd.borderRadius, Path.Direction.CW
+                            )
                         }
                         canvas.clipPath(path)
                     } else {
-                        canvas.clipRect(x, y, x + w, y + h)
+                        canvas.clipRect(cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h)
                     }
                 }
-                "clip-end" -> canvas.restore()
+                is RenderCmd.ClipEnd -> canvas.restore()
             }
         }
 
@@ -73,54 +70,42 @@ class GlyphisRenderView(context: Context) : View(context) {
 
     // -- Command drawers --
 
-    private fun drawRect(canvas: Canvas, cmd: JSONObject) {
-        val x = cmd.optDouble("x").toFloat()
-        val y = cmd.optDouble("y").toFloat()
-        val w = cmd.optDouble("width").toFloat()
-        val h = cmd.optDouble("height").toFloat()
-        val colorStr = cmd.optString("color", "")
-        if (colorStr.isEmpty()) return
+    private fun drawRect(canvas: Canvas, cmd: RenderCmd.Rect) {
+        if (cmd.color.isEmpty()) return
 
-        val opacity = cmd.optDouble("opacity", 1.0)
-        val needsLayer = opacity < 1.0
+        val needsLayer = cmd.opacity < 1.0f
         if (needsLayer) {
-            canvas.saveLayerAlpha(null, (opacity * 255).toInt())
+            canvas.saveLayerAlpha(null, (cmd.opacity * 255).toInt())
         }
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = parseColor(colorStr)
+            color = parseColor(cmd.color)
             style = Paint.Style.FILL
         }
 
-        val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
-        if (borderRadius > 0) {
-            canvas.drawRoundRect(x, y, x + w, y + h, borderRadius, borderRadius, paint)
+        if (cmd.borderRadius > 0) {
+            canvas.drawRoundRect(
+                cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h,
+                cmd.borderRadius, cmd.borderRadius, paint
+            )
         } else {
-            canvas.drawRect(x, y, x + w, y + h, paint)
+            canvas.drawRect(cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h, paint)
         }
 
         if (needsLayer) canvas.restore()
     }
 
-    private fun drawText(canvas: Canvas, cmd: JSONObject) {
-        val x = cmd.optDouble("x").toFloat()
-        val y = cmd.optDouble("y").toFloat()
-        val text = cmd.optString("text", "")
-        val colorStr = cmd.optString("color", "")
-        if (colorStr.isEmpty() || text.isEmpty()) return
-        val fontSize = cmd.optDouble("fontSize").toFloat()
+    private fun drawText(canvas: Canvas, cmd: RenderCmd.Text) {
+        if (cmd.color.isEmpty() || cmd.text.isEmpty()) return
 
-        val maxWidth = cmd.optDouble("maxWidth", Double.MAX_VALUE).toFloat()
-
-        val opacity = cmd.optDouble("opacity", 1.0)
-        val needsLayer = opacity < 1.0
+        val needsLayer = cmd.opacity < 1.0f
         if (needsLayer) {
-            canvas.saveLayerAlpha(null, (opacity * 255).toInt())
+            canvas.saveLayerAlpha(null, (cmd.opacity * 255).toInt())
         }
 
-        val fontWeight = cmd.optString("fontWeight", "normal")
-        val textAlign = cmd.optString("textAlign", "left")
-        val lineHeight = fontSize * 1.2f
+        val fontWeight = cmd.fontWeight
+        val textAlign = cmd.textAlign
+        val lineHeight = cmd.fontSize * 1.2f
 
         val typeface = when (fontWeight) {
             "bold", "700" -> Typeface.DEFAULT_BOLD
@@ -128,8 +113,8 @@ class GlyphisRenderView(context: Context) : View(context) {
         }
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = parseColor(colorStr)
-            textSize = fontSize
+            color = parseColor(cmd.color)
+            textSize = cmd.fontSize
             this.typeface = typeface
             this.textAlign = when (textAlign) {
                 "center" -> Paint.Align.CENTER
@@ -138,8 +123,10 @@ class GlyphisRenderView(context: Context) : View(context) {
             }
         }
 
+        val maxWidth = cmd.maxWidth
+
         // Word wrapping
-        val words = text.split(" ")
+        val words = cmd.text.split(" ")
         val lines = mutableListOf<String>()
         var currentLine = ""
 
@@ -158,40 +145,27 @@ class GlyphisRenderView(context: Context) : View(context) {
 
         for (i in lines.indices) {
             val drawX = when (textAlign) {
-                "center" -> x + maxWidth / 2
-                "right" -> x + maxWidth
-                else -> x
+                "center" -> cmd.x + maxWidth / 2
+                "right" -> cmd.x + maxWidth
+                else -> cmd.x
             }
             // Center vertically in line height
-            val drawY = y + i * lineHeight + lineHeight / 2 - (metrics.ascent + metrics.descent) / 2
+            val drawY = cmd.y + i * lineHeight + lineHeight / 2 - (metrics.ascent + metrics.descent) / 2
             canvas.drawText(lines[i], drawX, drawY, paint)
         }
 
         if (needsLayer) canvas.restore()
     }
 
-    private fun drawBorder(canvas: Canvas, cmd: JSONObject) {
-        val x = cmd.optDouble("x").toFloat()
-        val y = cmd.optDouble("y").toFloat()
-        val w = cmd.optDouble("width").toFloat()
-        val h = cmd.optDouble("height").toFloat()
-        val colorStr = cmd.optString("color", "")
-        if (colorStr.isEmpty()) return
+    private fun drawBorder(canvas: Canvas, cmd: RenderCmd.Border) {
+        if (cmd.color.isEmpty()) return
 
-        val widths = cmd.optJSONArray("widths") ?: return
-        if (widths.length() != 4) return
-        val tw = widths.optDouble(0).toFloat()
-        val rw = widths.optDouble(1).toFloat()
-        val bw = widths.optDouble(2).toFloat()
-        val lw = widths.optDouble(3).toFloat()
-
-        val opacity = cmd.optDouble("opacity", 1.0)
-        val needsLayer = opacity < 1.0
+        val needsLayer = cmd.opacity < 1.0f
         if (needsLayer) {
-            canvas.saveLayerAlpha(null, (opacity * 255).toInt())
+            canvas.saveLayerAlpha(null, (cmd.opacity * 255).toInt())
         }
 
-        val borderColor = parseColor(colorStr)
+        val borderColor = parseColor(cmd.color)
 
         fun drawLine(x1: Float, y1: Float, x2: Float, y2: Float, strokeWidth: Float) {
             if (strokeWidth <= 0) return
@@ -203,10 +177,8 @@ class GlyphisRenderView(context: Context) : View(context) {
             canvas.drawLine(x1, y1, x2, y2, paint)
         }
 
-        val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
-        if (borderRadius > 0) {
-            // For rounded borders, draw as a single stroked round rect using the max border width
-            val maxWidth = maxOf(tw, rw, bw, lw)
+        if (cmd.borderRadius > 0) {
+            val maxWidth = maxOf(cmd.tw, cmd.rw, cmd.bw, cmd.lw)
             if (maxWidth > 0) {
                 val half = maxWidth / 2
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -215,46 +187,36 @@ class GlyphisRenderView(context: Context) : View(context) {
                     style = Paint.Style.STROKE
                 }
                 canvas.drawRoundRect(
-                    x + half, y + half, x + w - half, y + h - half,
-                    borderRadius, borderRadius, paint
+                    cmd.x + half, cmd.y + half, cmd.x + cmd.w - half, cmd.y + cmd.h - half,
+                    cmd.borderRadius, cmd.borderRadius, paint
                 )
             }
         } else {
-            // Top
-            drawLine(x, y + tw / 2, x + w, y + tw / 2, tw)
-            // Right
-            drawLine(x + w - rw / 2, y, x + w - rw / 2, y + h, rw)
-            // Bottom
-            drawLine(x, y + h - bw / 2, x + w, y + h - bw / 2, bw)
-            // Left
-            drawLine(x + lw / 2, y, x + lw / 2, y + h, lw)
+            drawLine(cmd.x, cmd.y + cmd.tw / 2, cmd.x + cmd.w, cmd.y + cmd.tw / 2, cmd.tw)
+            drawLine(cmd.x + cmd.w - cmd.rw / 2, cmd.y, cmd.x + cmd.w - cmd.rw / 2, cmd.y + cmd.h, cmd.rw)
+            drawLine(cmd.x, cmd.y + cmd.h - cmd.bw / 2, cmd.x + cmd.w, cmd.y + cmd.h - cmd.bw / 2, cmd.bw)
+            drawLine(cmd.x + cmd.lw / 2, cmd.y, cmd.x + cmd.lw / 2, cmd.y + cmd.h, cmd.lw)
         }
 
         if (needsLayer) canvas.restore()
     }
 
-    private fun drawImage(canvas: Canvas, cmd: JSONObject) {
-        val imageId = cmd.optString("imageId", "")
-        val bitmap = imageCache[imageId] ?: return
-        val x = cmd.optDouble("x").toFloat()
-        val y = cmd.optDouble("y").toFloat()
-        val w = cmd.optDouble("width").toFloat()
-        val h = cmd.optDouble("height").toFloat()
-        val resizeMode = cmd.optString("resizeMode", "cover")
-        val opacity = cmd.optDouble("opacity", 1.0)
+    private fun drawImage(canvas: Canvas, cmd: RenderCmd.Image) {
+        val bitmap = imageLookup?.invoke(cmd.imageId) ?: return
 
-        val needsLayer = opacity < 1.0
+        val needsLayer = cmd.opacity < 1.0f
         if (needsLayer) {
-            canvas.saveLayerAlpha(null, (opacity * 255).toInt())
+            canvas.saveLayerAlpha(null, (cmd.opacity * 255).toInt())
         }
 
-        // borderRadius clipping
-        val borderRadius = cmd.optDouble("borderRadius", 0.0).toFloat()
-        val hasRadius = borderRadius > 0
+        val hasRadius = cmd.borderRadius > 0
         if (hasRadius) {
             canvas.save()
             val clipPath = Path().apply {
-                addRoundRect(RectF(x, y, x + w, y + h), borderRadius, borderRadius, Path.Direction.CW)
+                addRoundRect(
+                    RectF(cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h),
+                    cmd.borderRadius, cmd.borderRadius, Path.Direction.CW
+                )
             }
             canvas.clipPath(clipPath)
         }
@@ -264,23 +226,27 @@ class GlyphisRenderView(context: Context) : View(context) {
         val srcRect = Rect(0, 0, bitmap.width, bitmap.height)
         val destRect: RectF
 
-        when (resizeMode) {
+        when (cmd.resizeMode) {
             "stretch" -> {
-                destRect = RectF(x, y, x + w, y + h)
+                destRect = RectF(cmd.x, cmd.y, cmd.x + cmd.w, cmd.y + cmd.h)
             }
             "contain" -> {
-                val scale = minOf(w / imgW, h / imgH)
+                val scale = minOf(cmd.w / imgW, cmd.h / imgH)
                 val dw = imgW * scale
                 val dh = imgH * scale
-                destRect = RectF(x + (w - dw) / 2, y + (h - dh) / 2,
-                                 x + (w + dw) / 2, y + (h + dh) / 2)
+                destRect = RectF(
+                    cmd.x + (cmd.w - dw) / 2, cmd.y + (cmd.h - dh) / 2,
+                    cmd.x + (cmd.w + dw) / 2, cmd.y + (cmd.h + dh) / 2
+                )
             }
             else -> { // "cover"
-                val scale = maxOf(w / imgW, h / imgH)
+                val scale = maxOf(cmd.w / imgW, cmd.h / imgH)
                 val dw = imgW * scale
                 val dh = imgH * scale
-                destRect = RectF(x + (w - dw) / 2, y + (h - dh) / 2,
-                                 x + (w + dw) / 2, y + (h + dh) / 2)
+                destRect = RectF(
+                    cmd.x + (cmd.w - dw) / 2, cmd.y + (cmd.h - dh) / 2,
+                    cmd.x + (cmd.w + dw) / 2, cmd.y + (cmd.h + dh) / 2
+                )
             }
         }
 
@@ -291,53 +257,9 @@ class GlyphisRenderView(context: Context) : View(context) {
         if (needsLayer) canvas.restore()
     }
 
-    // -- Color Parsing --
+    // -- Color Parsing (delegated to shared ColorParser) --
 
-    private fun parseColor(hex: String): Int {
-        var h = hex.trim()
-
-        // Handle rgba() format
-        if (h.startsWith("rgba(")) {
-            val parts = h.removePrefix("rgba(").removeSuffix(")").split(",").map { it.trim() }
-            if (parts.size == 4) {
-                val r = parts[0].toIntOrNull() ?: 0
-                val g = parts[1].toIntOrNull() ?: 0
-                val b = parts[2].toIntOrNull() ?: 0
-                val a = (parts[3].toFloatOrNull() ?: 1f)
-                return Color.argb((a * 255).toInt(), r, g, b)
-            }
-        }
-
-        // Handle rgb() format
-        if (h.startsWith("rgb(")) {
-            val parts = h.removePrefix("rgb(").removeSuffix(")").split(",").map { it.trim() }
-            if (parts.size == 3) {
-                val r = parts[0].toIntOrNull() ?: 0
-                val g = parts[1].toIntOrNull() ?: 0
-                val b = parts[2].toIntOrNull() ?: 0
-                return Color.argb(255, r, g, b)
-            }
-        }
-
-        // Handle "transparent"
-        if (h == "transparent") {
-            return Color.TRANSPARENT
-        }
-
-        // Handle hex
-        if (h.startsWith("#")) h = h.substring(1)
-
-        // 3-char hex shorthand (#FFF -> #FFFFFF)
-        if (h.length == 3) {
-            h = "${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}"
-        }
-
-        return try {
-            Color.parseColor("#$h")
-        } catch (_: Exception) {
-            Color.BLACK
-        }
-    }
+    private fun parseColor(hex: String): Int = ColorParser.parse(hex)
 
     // -- Touch Handling --
 

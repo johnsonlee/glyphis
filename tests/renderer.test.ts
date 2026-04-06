@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { createSignal } from 'solid-js';
-import { glyphisRenderer, render, scheduleRender } from '../src/renderer';
-import type { Platform, RenderCommand, InputEvent } from '../src/types';
+import { glyphisRenderer, render, scheduleRender, textInputRegistry, showTextInput, hideTextInput, updateTextInput } from '../src/renderer';
+import type { Platform, RenderCommand, InputEvent, TextInputConfig } from '../src/types';
 import type { GlyphisNode } from '../src/node';
 import Yoga from 'yoga-layout';
 
@@ -10,26 +10,38 @@ function createMockPlatform(): Platform & {
   onInputMock: ReturnType<typeof mock>;
   loadImageMock: ReturnType<typeof mock>;
   onImageLoadedMock: ReturnType<typeof mock>;
+  showTextInputMock: ReturnType<typeof mock>;
+  updateTextInputMock: ReturnType<typeof mock>;
+  hideTextInputMock: ReturnType<typeof mock>;
   lastInputCallback: ((event: InputEvent) => void) | null;
 } {
   let lastInputCallback: ((event: InputEvent) => void) | null = null;
-  const renderMock = mock((_commands: RenderCommand[]) => {});
-  const onInputMock = mock((cb: (event: InputEvent) => void) => {
+  const renderMock = mock(function (_commands: RenderCommand[]) {});
+  const onInputMock = mock(function (cb: (event: InputEvent) => void) {
     lastInputCallback = cb;
   });
-  const loadImageMock = mock((_id: string, _url: string) => {});
-  const onImageLoadedMock = mock((_cb: (id: string, w: number, h: number) => void) => {});
+  const loadImageMock = mock(function (_id: string, _url: string) {});
+  const onImageLoadedMock = mock(function (_cb: (id: string, w: number, h: number) => void) {});
+  const showTextInputMock = mock(function (_config: TextInputConfig) {});
+  const updateTextInputMock = mock(function (_id: string, _config: Partial<TextInputConfig>) {});
+  const hideTextInputMock = mock(function (_id: string) {});
   return {
-    measureText: () => ({ width: 50, height: 20 }),
+    measureText: function () { return { width: 50, height: 20 }; },
     render: renderMock,
-    getViewport: () => ({ width: 390, height: 844 }),
+    getViewport: function () { return { width: 390, height: 844 }; },
     onInput: onInputMock,
     loadImage: loadImageMock,
     onImageLoaded: onImageLoadedMock,
-    renderMock,
-    onInputMock,
-    loadImageMock,
-    onImageLoadedMock,
+    showTextInput: showTextInputMock,
+    updateTextInput: updateTextInputMock,
+    hideTextInput: hideTextInputMock,
+    renderMock: renderMock,
+    onInputMock: onInputMock,
+    loadImageMock: loadImageMock,
+    onImageLoadedMock: onImageLoadedMock,
+    showTextInputMock: showTextInputMock,
+    updateTextInputMock: updateTextInputMock,
+    hideTextInputMock: hideTextInputMock,
     lastInputCallback: null,
     get _lastInputCallback() {
       return lastInputCallback;
@@ -888,6 +900,162 @@ describe('renderer', () => {
       expect(textNode.tag).toBe('__text');
       expect(textNode.text).toBe('orphan');
       textNode.yoga.free();
+    });
+  });
+
+  // --- TextInput support ---
+
+  describe('textInputRegistry', function () {
+    it('starts empty', function () {
+      // Registry may have entries from other tests, but it's a Map
+      // and the type is correct
+      expect(textInputRegistry instanceof Map).toBe(true);
+    });
+  });
+
+  describe('showTextInput', function () {
+    it('delegates to platform showTextInput', async function () {
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      var config: TextInputConfig = {
+        inputId: 'test-1',
+        x: 10,
+        y: 20,
+        width: 200,
+        height: 40,
+        value: 'hello',
+        placeholder: 'Type here',
+        fontSize: 16,
+        color: '#000000',
+        placeholderColor: '#999999',
+        keyboardType: 'default',
+        returnKeyType: 'done',
+        secureTextEntry: false,
+        multiline: false,
+        maxLength: 0,
+      };
+      showTextInput(config);
+      expect(mockPlatform.showTextInputMock).toHaveBeenCalledWith(config);
+    });
+  });
+
+  describe('hideTextInput', function () {
+    it('delegates to platform hideTextInput', async function () {
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      hideTextInput('test-1');
+      expect(mockPlatform.hideTextInputMock).toHaveBeenCalledWith('test-1');
+    });
+  });
+
+  describe('updateTextInput', function () {
+    it('delegates to platform updateTextInput', async function () {
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      updateTextInput('test-1', { value: 'updated' });
+      expect(mockPlatform.updateTextInputMock).toHaveBeenCalledWith('test-1', { value: 'updated' });
+    });
+  });
+
+  describe('text input events dispatch to registered callbacks', function () {
+    it('textchange event dispatches to onChangeText', async function () {
+      var changedText = '';
+      textInputRegistry.set('evt-input-1', {
+        onChangeText: function (text: string) { changedText = text; },
+      });
+
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      var cb = (mockPlatform as any)._lastInputCallback;
+      expect(cb).toBeDefined();
+      cb({ type: 'textchange', inputId: 'evt-input-1', text: 'hello world' });
+      expect(changedText).toBe('hello world');
+      textInputRegistry.delete('evt-input-1');
+    });
+
+    it('textsubmit event dispatches to onSubmit', async function () {
+      var submitCalled = false;
+      textInputRegistry.set('evt-input-2', {
+        onSubmit: function () { submitCalled = true; },
+      });
+
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      var cb = (mockPlatform as any)._lastInputCallback;
+      cb({ type: 'textsubmit', inputId: 'evt-input-2' });
+      expect(submitCalled).toBe(true);
+      textInputRegistry.delete('evt-input-2');
+    });
+
+    it('textfocus event dispatches to onFocus', async function () {
+      var focusCalled = false;
+      textInputRegistry.set('evt-input-3', {
+        onFocus: function () { focusCalled = true; },
+      });
+
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      var cb = (mockPlatform as any)._lastInputCallback;
+      cb({ type: 'textfocus', inputId: 'evt-input-3' });
+      expect(focusCalled).toBe(true);
+      textInputRegistry.delete('evt-input-3');
+    });
+
+    it('textblur event dispatches to onBlur', async function () {
+      var blurCalled = false;
+      textInputRegistry.set('evt-input-4', {
+        onBlur: function () { blurCalled = true; },
+      });
+
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      var cb = (mockPlatform as any)._lastInputCallback;
+      cb({ type: 'textblur', inputId: 'evt-input-4' });
+      expect(blurCalled).toBe(true);
+      textInputRegistry.delete('evt-input-4');
+    });
+
+    it('text events for unknown inputId do not throw', async function () {
+      disposeFn = render(function () { return null; }, mockPlatform);
+      await flush();
+
+      var cb = (mockPlatform as any)._lastInputCallback;
+      expect(function () {
+        cb({ type: 'textchange', inputId: 'nonexistent', text: 'test' });
+        cb({ type: 'textsubmit', inputId: 'nonexistent' });
+        cb({ type: 'textfocus', inputId: 'nonexistent' });
+        cb({ type: 'textblur', inputId: 'nonexistent' });
+      }).not.toThrow();
+    });
+  });
+
+  describe('showTextInput/hideTextInput without platform', function () {
+    it('does not throw when no platform is set', function () {
+      // After dispose, currentPlatform is null
+      // showTextInput/hideTextInput/updateTextInput should be safe to call
+      var prevDispose = render(function () { return null; }, mockPlatform);
+      prevDispose();
+      disposeFn = null;
+
+      expect(function () {
+        showTextInput({
+          inputId: 'orphan',
+          x: 0, y: 0, width: 100, height: 40,
+          value: '', placeholder: '', fontSize: 14,
+          color: '#000', placeholderColor: '#999',
+          keyboardType: 'default', returnKeyType: 'done',
+          secureTextEntry: false, multiline: false, maxLength: 0,
+        });
+        hideTextInput('orphan');
+        updateTextInput('orphan', { value: 'test' });
+      }).not.toThrow();
     });
   });
 });

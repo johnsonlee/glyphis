@@ -17,6 +17,7 @@ export interface GlyphisNode {
   text: string;
   parent: GlyphisNode | undefined;
   imageProps: ImageProps | undefined;
+  textInputId: string | undefined;
 }
 
 export function createGlyphisNode(yoga: YogaNode, tag: string): GlyphisNode {
@@ -29,5 +30,6 @@ export function createGlyphisNode(yoga: YogaNode, tag: string): GlyphisNode {
     text: '',
     parent: undefined,
     imageProps: undefined,
+    textInputId: undefined,
   };
 }

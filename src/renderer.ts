@@ -4,7 +4,7 @@ import { type GlyphisNode, createGlyphisNode } from './node';
 import { applyStyle } from './styles';
 import { generateCommands } from './commands';
 import { dispatchInput } from './events';
-import type { Platform, Style, InputEvent } from './types';
+import type { Platform, RenderPlatform, ImagePlatform, TextInputPlatform, Style, InputEvent, TextInputConfig } from './types';
 
 let renderScheduled = false;
 let rootNode: GlyphisNode | null = null;
@@ -31,6 +31,30 @@ function flushRender(): void {
   rootNode.yoga.calculateLayout(viewport.width, viewport.height, Direction.LTR);
   const commands = generateCommands(rootNode);
   currentPlatform.render(commands);
+  syncTextInputPositions();
+}
+
+function syncTextInputPositions(): void {
+  if (!currentPlatform) return;
+  textInputRegistry.forEach(function(entry, inputId) {
+    if (entry.focused && entry.node) {
+      var layout = entry.node.yoga.getComputedLayout();
+      var x = layout.left;
+      var y = layout.top;
+      var current = entry.node.parent;
+      while (current) {
+        var pl = current.yoga.getComputedLayout();
+        x = x + pl.left;
+        y = y + pl.top;
+        current = current.parent;
+      }
+      if (currentPlatform && currentPlatform.updateTextInput) {
+        currentPlatform.updateTextInput(inputId, {
+          x: x, y: y, width: layout.width, height: layout.height
+        } as any);
+      }
+    }
+  });
 }
 
 function initNode(tag: string): GlyphisNode {
@@ -72,7 +96,9 @@ var imageLoadListenerRegistered = false;
 
 function setupImageLoad(node: GlyphisNode): void {
   if (!currentPlatform || !node.imageProps) return;
+  if (!currentPlatform.loadImage || !currentPlatform.onImageLoaded) return;
   var imageId = node.imageProps.imageId;
+  var platform = currentPlatform;
 
   imageLoadCallbacks.set(imageId, function(width: number, height: number) {
     if (!node.imageProps) return;
@@ -83,15 +109,17 @@ function setupImageLoad(node: GlyphisNode): void {
     scheduleRender();
   });
 
-  if (!imageLoadListenerRegistered && currentPlatform) {
+  if (!imageLoadListenerRegistered && platform.onImageLoaded) {
     imageLoadListenerRegistered = true;
-    currentPlatform.onImageLoaded(function(imageId: string, width: number, height: number) {
+    platform.onImageLoaded(function(imageId: string, width: number, height: number) {
       var cb = imageLoadCallbacks.get(imageId);
       if (cb) cb(width, height);
     });
   }
 
-  currentPlatform.loadImage(imageId, node.imageProps.src);
+  if (platform.loadImage) {
+    platform.loadImage(imageId, node.imageProps.src);
+  }
 }
 
 export const glyphisRenderer = createRenderer<GlyphisNode>({
@@ -190,8 +218,22 @@ export function render(code: () => any, platform: Platform): () => void {
   rootNode.yoga.setWidth(viewport.width);
   rootNode.yoga.setHeight(viewport.height);
 
-  platform.onInput((event: InputEvent) => {
-    if (rootNode) dispatchInput(rootNode, event);
+  platform.onInput(function(event: InputEvent) {
+    if (event.type === 'pointerdown' || event.type === 'pointerup' || event.type === 'pointermove') {
+      if (rootNode) dispatchInput(rootNode, event);
+    } else if (event.type === 'textchange') {
+      var cbs = textInputRegistry.get(event.inputId);
+      if (cbs && cbs.onChangeText) cbs.onChangeText(event.text);
+    } else if (event.type === 'textsubmit') {
+      var cbs2 = textInputRegistry.get(event.inputId);
+      if (cbs2 && cbs2.onSubmit) cbs2.onSubmit();
+    } else if (event.type === 'textfocus') {
+      var cbs3 = textInputRegistry.get(event.inputId);
+      if (cbs3 && cbs3.onFocus) cbs3.onFocus();
+    } else if (event.type === 'textblur') {
+      var cbs4 = textInputRegistry.get(event.inputId);
+      if (cbs4 && cbs4.onBlur) cbs4.onBlur();
+    }
   });
 
   const dispose = glyphisRenderer.render(code, rootNode);
@@ -205,6 +247,29 @@ export function render(code: () => any, platform: Platform): () => void {
     }
     currentPlatform = null;
   };
+}
+
+// --- TextInput support ---
+
+export var textInputRegistry: Map<string, {
+  onChangeText?: Function;
+  onFocus?: Function;
+  onBlur?: Function;
+  onSubmit?: Function;
+  node?: GlyphisNode;
+  focused?: boolean;
+}> = new Map();
+
+export function showTextInput(config: TextInputConfig): void {
+  if (currentPlatform && currentPlatform.showTextInput) currentPlatform.showTextInput(config);
+}
+
+export function hideTextInput(inputId: string): void {
+  if (currentPlatform && currentPlatform.hideTextInput) currentPlatform.hideTextInput(inputId);
+}
+
+export function updateTextInput(inputId: string, config: Partial<TextInputConfig>): void {
+  if (currentPlatform && currentPlatform.updateTextInput) currentPlatform.updateTextInput(inputId, config);
 }
 
 export { scheduleRender };

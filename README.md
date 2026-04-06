@@ -37,9 +37,11 @@ Two components exist today:
 
 - **`View`** -- Flexbox container. Props: `style`, `onPress`, `onPressIn`, `onPressOut`, `onPointerMove`.
 - **`Text`** -- Text display. Props: `style`, children (string).
+- **`Button`** -- Pressable button with feedback. Props: `title`, `onPress`, `color`, `textColor`, `disabled`, `style`.
+- **`Image`** -- Async image loading with resize modes. Props: `src`, `resizeMode` (cover/contain/stretch), `onLoad`, `style`.
+- **`TextInput`** -- Text input with native overlay. Props: `value`, `onChangeText`, `placeholder`, `keyboardType`, `secureTextEntry`, `multiline`, `maxLength`, `onFocus`, `onBlur`, `onSubmitEditing`, `style`.
+- **`ScrollView`** -- Scrollable container with momentum and rubber-band. Props: `style`, `contentHeight`, `horizontal`, `children`.
 - **`RecyclerList`** -- Virtual list with node recycling. Only creates visible rows. Props: `data`, `renderItem`, `itemHeight`, `ref` (scroll handle).
-
-Components like Button, Image, ScrollView, and TextInput do not exist yet.
 
 ## Quick start
 
@@ -141,19 +143,26 @@ scripts/
   build-android.ts    Bundle JS + Gradle build (CMake compiles Yoga + JNI)
 
 examples/
-  calculator/         iOS Calculator clone (SolidJS)
-  counter/            Minimal counter
-  bench-rows/         1K/10K rows benchmark
+  calculator/         iOS Calculator clone
+  image-gallery/      Image loading + resize modes
+  text-input/         Form with 5 input types
+  bench-rows/         1K/10K rows benchmark (with RecyclerList)
   bench-dbmon/        Database monitoring grid benchmark
   bench-anim/         200 animated boxes benchmark
+  bench-bridge/       JS↔native bridge micro-benchmark
 ```
+
+## Browser API compatibility
+
+Polyfilled on native (JSC) so npm packages work without modification:
+
+`fetch`, `localStorage`, `setTimeout`/`setInterval`, `queueMicrotask`, `Promise`, `MessageChannel`, `performance.now`, `URL`/`URLSearchParams`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `crypto.getRandomValues`, `AbortController`, `console`, `requestAnimationFrame`
 
 ## Not implemented yet
 
 - Accessibility (single-surface rendering bypasses platform accessibility trees)
-- Text input (keyboard, IME, cursor, selection)
-- Scroll physics (momentum, rubber-banding)
 - GPU rendering (currently CPU 2D only)
+- WebSocket
 
 ## Development
 

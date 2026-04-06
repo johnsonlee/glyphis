@@ -1,4 +1,4 @@
-import type { Platform, RenderCommand, InputEvent } from '../types';
+import type { Platform, RenderCommand, InputEvent, TextInputConfig } from '../types';
 
 export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
   const ctx = canvas.getContext('2d')!;
@@ -25,6 +25,8 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
   canvas.addEventListener('pointermove', (e) => {
     if (inputCallback) inputCallback({ type: 'pointermove', ...canvasCoords(e) });
   });
+
+  var textInputElements: Map<string, HTMLInputElement | HTMLTextAreaElement> = new Map();
 
   var imageCache: Map<string, HTMLImageElement> = new Map();
   var imageLoadCallback: ((id: string, w: number, h: number) => void) | null = null;
@@ -100,6 +102,93 @@ export function createWebPlatform(canvas: HTMLCanvasElement): Platform {
 
     onImageLoaded(callback: (id: string, w: number, h: number) => void): void {
       imageLoadCallback = callback;
+    },
+
+    showTextInput(config: TextInputConfig): void {
+      var existing = textInputElements.get(config.inputId);
+      if (existing) {
+        existing.focus();
+        return;
+      }
+
+      var el: HTMLInputElement | HTMLTextAreaElement;
+      if (config.multiline) {
+        el = document.createElement('textarea');
+      } else {
+        el = document.createElement('input');
+        (el as HTMLInputElement).type = config.secureTextEntry ? 'password' : 'text';
+      }
+
+      el.value = config.value;
+      el.placeholder = config.placeholder;
+      el.style.position = 'absolute';
+      el.style.left = config.x + 'px';
+      el.style.top = config.y + 'px';
+      el.style.width = config.width + 'px';
+      el.style.height = config.height + 'px';
+      el.style.fontSize = config.fontSize + 'px';
+      el.style.color = config.color;
+      el.style.border = 'none';
+      el.style.outline = 'none';
+      el.style.background = 'transparent';
+      el.style.padding = '8px';
+      el.style.margin = '0';
+      el.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+      el.style.boxSizing = 'border-box';
+      el.style.zIndex = '10';
+      if (config.maxLength > 0) el.maxLength = config.maxLength;
+
+      switch (config.keyboardType) {
+        case 'number-pad': el.inputMode = 'numeric'; break;
+        case 'decimal-pad': el.inputMode = 'decimal'; break;
+        case 'email-address': el.inputMode = 'email'; break;
+        default: el.inputMode = 'text';
+      }
+
+      var capturedInputId = config.inputId;
+      var capturedMultiline = config.multiline;
+
+      el.addEventListener('input', function() {
+        if (inputCallback) inputCallback({ type: 'textchange', inputId: capturedInputId, text: el.value });
+      });
+      el.addEventListener('focus', function() {
+        if (inputCallback) inputCallback({ type: 'textfocus', inputId: capturedInputId });
+      });
+      el.addEventListener('blur', function() {
+        if (inputCallback) inputCallback({ type: 'textblur', inputId: capturedInputId });
+      });
+      el.addEventListener('keydown', function(e: KeyboardEvent) {
+        if (e.key === 'Enter' && !capturedMultiline) {
+          if (inputCallback) inputCallback({ type: 'textsubmit', inputId: capturedInputId });
+        }
+      });
+
+      // Position relative to canvas
+      if (canvas.parentElement) {
+        canvas.parentElement.style.position = 'relative';
+        canvas.parentElement.appendChild(el);
+      }
+      textInputElements.set(config.inputId, el);
+      el.focus();
+    },
+
+    updateTextInput(inputId: string, config: Partial<TextInputConfig>): void {
+      var el = textInputElements.get(inputId);
+      if (!el) return;
+      if (config.x != null) el.style.left = config.x + 'px';
+      if (config.y != null) el.style.top = config.y + 'px';
+      if (config.width != null) el.style.width = config.width + 'px';
+      if (config.height != null) el.style.height = config.height + 'px';
+      if (config.value != null) el.value = config.value;
+    },
+
+    hideTextInput(inputId: string): void {
+      var el = textInputElements.get(inputId);
+      if (el) {
+        el.blur();
+        if (el.parentElement) el.parentElement.removeChild(el);
+        textInputElements.delete(inputId);
+      }
     },
   };
 }

@@ -74,16 +74,53 @@ export type RenderCommand =
   | { type: 'image'; imageId: string; x: number; y: number; width: number; height: number; resizeMode: string; opacity?: number; borderRadius?: number; clipId?: number }
   | { type: 'clip-end'; id: number };
 
-export interface Platform {
+// Core rendering -- required for all platforms
+export interface RenderPlatform {
   measureText(text: string, fontSize: number, fontFamily?: string, fontWeight?: string): { width: number; height: number };
   render(commands: RenderCommand[]): void;
   getViewport(): { width: number; height: number };
   onInput(callback: (event: InputEvent) => void): void;
+}
+
+// Image loading -- optional capability
+export interface ImagePlatform {
   loadImage(imageId: string, url: string): void;
   onImageLoaded(callback: (imageId: string, width: number, height: number) => void): void;
+}
+
+// Text input -- optional capability
+export interface TextInputPlatform {
+  showTextInput(config: TextInputConfig): void;
+  updateTextInput(inputId: string, config: Partial<TextInputConfig>): void;
+  hideTextInput(inputId: string): void;
+}
+
+// Combined -- what platform implementations return
+export type Platform = RenderPlatform & Partial<ImagePlatform> & Partial<TextInputPlatform>;
+
+export interface TextInputConfig {
+  inputId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  value: string;
+  placeholder: string;
+  fontSize: number;
+  color: string;
+  placeholderColor: string;
+  keyboardType: string;
+  returnKeyType: string;
+  secureTextEntry: boolean;
+  multiline: boolean;
+  maxLength: number;
 }
 
 export type InputEvent =
   | { type: 'pointerdown'; x: number; y: number }
   | { type: 'pointerup'; x: number; y: number }
-  | { type: 'pointermove'; x: number; y: number };
+  | { type: 'pointermove'; x: number; y: number }
+  | { type: 'textchange'; inputId: string; text: string }
+  | { type: 'textsubmit'; inputId: string }
+  | { type: 'textfocus'; inputId: string }
+  | { type: 'textblur'; inputId: string };

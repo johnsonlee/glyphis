@@ -14,6 +14,7 @@
 		A1000005 /* bundle.js in Resources */ = {isa = PBXBuildFile; fileRef = A2000005 /* bundle.js */; };
 		A1000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000007 /* Assets.xcassets */; };
 		A1000008 /* YogaBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* YogaBridge.swift */; };
+		A1000009 /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* ImageLoader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 		A2000008 /* YogaBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YogaBridge.swift; sourceTree = "<group>"; };
 		A2000009 /* yoga-bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "yoga-bridge.h"; sourceTree = "<group>"; };
 		A2000010 /* GlyphisShell.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GlyphisShell.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000011 /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +58,7 @@
 				A2000003 /* GlyphisRenderView.swift */,
 				A2000004 /* GlyphisRuntime.swift */,
 				A2000008 /* YogaBridge.swift */,
+				A2000011 /* ImageLoader.swift */,
 				A2000009 /* yoga-bridge.h */,
 				A2000006 /* Info.plist */,
 				A2000007 /* Assets.xcassets */,
@@ -150,6 +153,7 @@
 				A1000003 /* GlyphisRenderView.swift in Sources */,
 				A1000004 /* GlyphisRuntime.swift in Sources */,
 				A1000008 /* YogaBridge.swift in Sources */,
+				A1000009 /* ImageLoader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
