@@ -25,4 +25,4 @@ jobs:
         run: bun run build
 
       - name: Test
-        run: bun test tests/ --conditions browser --coverage
+        run: bun test ./tests/ --conditions browser --coverage
