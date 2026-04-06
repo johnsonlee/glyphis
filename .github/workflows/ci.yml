@@ -25,4 +25,13 @@ jobs:
         run: bun run build
 
       - name: Test
-        run: bun test ./tests/ --conditions browser --coverage
+        run: |
+          bun test ./tests/ --conditions browser --coverage 2>&1 | tee test-output.txt
+
+      - name: Coverage gate (>= 95%)
+        run: |
+          LINE=$(grep 'All files' test-output.txt)
+          FUNCS=$(echo "$LINE" | awk -F'|' '{gsub(/ /,"",$2); print $2}')
+          LINES=$(echo "$LINE" | awk -F'|' '{gsub(/ /,"",$3); print $3}')
+          echo "Functions: ${FUNCS}%  Lines: ${LINES}%"
+          awk "BEGIN { if ($FUNCS < 95 || $LINES < 95) { print \"FAIL: coverage below 95%\"; exit 1 } }"
