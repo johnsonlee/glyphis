@@ -86,7 +86,7 @@ async function buildIOS() {
     'xcodebuild',
     '-project', join(nativeDir, 'GlyphisShell.xcodeproj'),
     '-scheme', 'GlyphisShell',
-    '-destination', 'platform=iOS Simulator,name=iPhone 15',
+    '-destination', 'generic/platform=iOS Simulator',
     '-derivedDataPath', join(buildDir, 'DerivedData'),
     'HEADER_SEARCH_PATHS=' + yogaDir,
     'LIBRARY_SEARCH_PATHS=' + buildDir,
@@ -107,7 +107,7 @@ async function buildIOS() {
   console.log('\n  Build successful!');
   console.log(`  App: ${appPath}\n`);
   console.log('  To run in simulator:');
-  console.log('    xcrun simctl boot "iPhone 15"');
+  console.log('    xcrun simctl boot "<device>"');
   console.log(`    xcrun simctl install booted "${appPath}"`);
   console.log('    xcrun simctl launch booted com.glyphis.shell');
 }
