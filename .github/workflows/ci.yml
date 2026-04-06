@@ -35,3 +35,60 @@ jobs:
           LINES=$(echo "$LINE" | awk -F'|' '{gsub(/ /,"",$3); print $3}')
           echo "Functions: ${FUNCS}%  Lines: ${LINES}%"
           awk "BEGIN { if ($FUNCS < 95 || $LINES < 95) { print \"FAIL: coverage below 95%\"; exit 1 } }"
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build macOS app
+        run: bun run scripts/build-macos.ts examples/calculator/app.ts
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build Android APK
+        run: bun run scripts/build-android.ts examples/calculator/app.ts
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build iOS app
+        run: bun run scripts/build-ios.ts examples/calculator/app.ts
